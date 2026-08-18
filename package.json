@@ -1,0 +1,14 @@
+{
+  "name": "sidecar",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Local-first meeting intelligence sidecar",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "node scripts/check.mjs",
+    "test": "node --test scripts/check.test.mjs"
+  }
+}

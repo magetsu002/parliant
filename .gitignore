@@ -1,0 +1,31 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# Node / JS
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Rust (if introduced later)
+target/
+
+# Python (if introduced later)
+.venv/
+__pycache__/
+*.pyc
+
+# Runtime data
+*.sock
+*.pid
+*.log
+.sidecar/
+transcripts/
+recordings/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
