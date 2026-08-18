@@ -461,8 +461,20 @@ fn wait_readable(stream: &UnixStream, timeout: Duration) -> Result<bool, IpcErro
 
 fn prepare_socket_path(path: &Path) -> Result<(), IpcError> {
     let parent = path.parent().ok_or(IpcError::UnsafeSocketPath)?;
-    fs::create_dir_all(parent)?;
-    fs::set_permissions(parent, fs::Permissions::from_mode(0o700))?;
+    let parent_exists = match fs::metadata(parent) {
+        Ok(metadata) => {
+            if !metadata.is_dir() {
+                return Err(IpcError::UnsafeSocketPath);
+            }
+            true
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => return Err(IpcError::Io(error)),
+    };
+    if !parent_exists {
+        fs::create_dir_all(parent)?;
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700))?;
+    }
     match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.file_type().is_socket() => fs::remove_file(path)?,
         Ok(_) => return Err(IpcError::UnsafeSocketPath),
