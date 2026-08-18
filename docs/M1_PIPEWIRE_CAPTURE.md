@@ -12,7 +12,7 @@ M1 is the first executable SIDECAR vertical slice. It captures audio only. It do
 - M1 requests native-rate/native-channel interleaved F32LE audio. Future provider-specific conversion belongs at the provider boundary, not in this capture contract.
 - The frame queue is bounded. If downstream work is slow, capture drops the newest frame and increments `dropped_full` rather than blocking capture or growing memory without bound.
 - SIGINT and SIGTERM set the same cooperative cancellation token used by programmatic shutdown.
-- Raw audio is not written to disk. The M1 daemon consumer only counts frames and bytes.
+- Raw audio is not written to disk. The M1 daemon consumer records only frame/byte counts plus first/last timestamp and monotonicity metadata for runtime verification.
 
 ## Build and deterministic verification
 
@@ -46,6 +46,6 @@ Capture playback from an explicitly selected sink:
 cargo run -p sidecar-daemon -- capture --target '<SINK_TARGET>' --sink-monitor
 ```
 
-While audio is flowing, the daemon should report `connecting`, a negotiated format, and `streaming`. Stop it with Ctrl-C and verify a clean `Cancelled` stop plus the metadata-only capture summary. Removing the selected node while streaming should produce `selected source lost` and a non-zero exit instead of reconnecting elsewhere.
+While audio is flowing, the daemon should report `connecting`, a negotiated format, and `streaming`. Stop it with Ctrl-C and verify a clean `Cancelled` stop plus a metadata-only capture summary with non-zero `consumed_frames`, `timestamps_monotonic=true`, and, after more than one frame, `timestamps_advanced=true`. Removing the selected node while streaming should produce `selected source lost` and a non-zero exit instead of reconnecting elsewhere.
 
 A successful build or fixture replay is **not** evidence that PipeWire runtime capture succeeded. Runtime success is claimed only after the command above has actually captured frames from a live PipeWire graph.
