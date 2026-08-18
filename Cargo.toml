@@ -9,8 +9,8 @@ resolver = "2"
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-license = "UNLICENSED"
 repository = "https://github.com/magetsu002/sidecar"
+publish = false
 
 [workspace.dependencies]
 sidecar-core = { path = "crates/sidecar-core" }
@@ -18,6 +18,4 @@ sidecar-audio = { path = "crates/sidecar-audio" }
 thiserror = "2.0"
 signal-hook = "0.3.18"
 clap = { version = "4.5", features = ["derive"] }
-
-[target.'cfg(target_os = "linux")'.workspace.dependencies]
 pipewire = "0.10.0"

@@ -10,7 +10,7 @@ pub enum SampleFormat {
 impl SampleFormat {
     pub const fn bytes_per_sample(self) -> usize {
         match self {
-            Self::F32Le => size_of::<f32>(),
+            Self::F32Le => std::mem::size_of::<f32>(),
         }
     }
 }

@@ -16,7 +16,7 @@ M1 is the first executable SIDECAR vertical slice. It captures audio only. It do
 
 ## Build and deterministic verification
 
-On Arch Linux, the required system package is PipeWire itself plus development files provided by the normal `pipewire` package.
+On Arch Linux, the required development files are provided by the normal `pipewire` package.
 
 ```bash
 cargo test --workspace
@@ -27,13 +27,14 @@ The tests use deterministic in-memory audio fixtures. They do not require a micr
 
 ## Real PipeWire smoke test
 
-Find the exact PipeWire target you intend to capture:
+Find the PipeWire object you intend to capture, then inspect it to obtain its exact `node.name` or `object.serial`:
 
 ```bash
 wpctl status
+wpctl inspect <ID>
 ```
 
-Capture a source by its `node.name` or `object.serial`:
+Capture a source by its exact target value:
 
 ```bash
 cargo run -p sidecar-daemon -- capture --target '<TARGET>'

@@ -140,15 +140,15 @@ pub fn run_pipewire_capture(
             let Some(data) = datas.first_mut() else {
                 return;
             };
-            let requested_size = data.chunk().size() as usize;
-            if requested_size == 0 {
-                return;
-            }
+            let (offset, size) = {
+                let chunk = data.chunk();
+                (chunk.offset(), chunk.size())
+            };
             let Some(bytes) = data.data() else {
                 return;
             };
-            let size = requested_size.min(bytes.len());
-            if size == 0 {
+            let payload = copy_chunk(bytes, offset, size);
+            if payload.is_empty() {
                 return;
             }
 
@@ -160,7 +160,7 @@ pub fn run_pipewire_capture(
                 sequence,
                 MonotonicTimestamp::from_nanos(nanos),
                 format,
-                bytes[..size].to_vec(),
+                payload,
             );
 
             if let Err(error) = user_data.frames.try_send(frame) {
@@ -232,4 +232,38 @@ pub fn run_pipewire_capture(
 
     let _ = events.send(CaptureEvent::Stopped(reason));
     Ok(reason)
+}
+
+fn copy_chunk(bytes: &[u8], offset: u32, size: u32) -> Vec<u8> {
+    if bytes.is_empty() || size == 0 {
+        return Vec::new();
+    }
+
+    let max_size = bytes.len();
+    let start = (offset as usize) % max_size;
+    let size = (size as usize).min(max_size);
+    let first_len = size.min(max_size - start);
+
+    let mut payload = Vec::with_capacity(size);
+    payload.extend_from_slice(&bytes[start..start + first_len]);
+    if first_len < size {
+        payload.extend_from_slice(&bytes[..size - first_len]);
+    }
+    payload
+}
+
+#[cfg(test)]
+mod tests {
+    use super::copy_chunk;
+
+    #[test]
+    fn copy_chunk_honors_offset_and_size() {
+        assert_eq!(copy_chunk(&[0, 1, 2, 3, 4], 2, 2), vec![2, 3]);
+    }
+
+    #[test]
+    fn copy_chunk_clamps_size_and_handles_wrapped_offsets() {
+        assert_eq!(copy_chunk(&[0, 1, 2, 3], 3, 4), vec![3, 0, 1, 2]);
+        assert_eq!(copy_chunk(&[0, 1, 2, 3], 9, 2), vec![1, 2]);
+    }
 }
