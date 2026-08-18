@@ -53,7 +53,7 @@ pub fn run_pipewire_capture(
             *pw::keys::MEDIA_TYPE => "Audio",
             *pw::keys::MEDIA_CATEGORY => "Capture",
             *pw::keys::MEDIA_ROLE => "Communication",
-            *pw::keys::TARGET_OBJECT => target.object(),
+            "target.object" => target.object(),
             *pw::keys::NODE_DONT_RECONNECT => "true",
             "node.dont-fallback" => "true",
         },
@@ -61,7 +61,7 @@ pub fn run_pipewire_capture(
             *pw::keys::MEDIA_TYPE => "Audio",
             *pw::keys::MEDIA_CATEGORY => "Capture",
             *pw::keys::MEDIA_ROLE => "Communication",
-            *pw::keys::TARGET_OBJECT => target.object(),
+            "target.object" => target.object(),
             *pw::keys::NODE_DONT_RECONNECT => "true",
             "node.dont-fallback" => "true",
             *pw::keys::STREAM_CAPTURE_SINK => "true",
@@ -189,7 +189,7 @@ pub fn run_pipewire_capture(
     .0
     .into_inner();
     let param = Pod::from_bytes(&values)
-        .map_err(|error| CaptureError::Backend(format!("invalid audio format pod: {error:?}")))?;
+        .ok_or_else(|| CaptureError::Backend("invalid serialized audio format pod".to_string()))?;
     let mut params = [param];
 
     stream
