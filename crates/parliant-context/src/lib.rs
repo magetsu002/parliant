@@ -1,8 +1,8 @@
 //! Bounded, memory-only canonical meeting state.
 
-use serde::{Deserialize, Serialize};
 use parliant_core::MonotonicTimestamp;
 use parliant_transcribe::{SpeakerMetadata, TranscriptSegment};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};
 use thiserror::Error;
 

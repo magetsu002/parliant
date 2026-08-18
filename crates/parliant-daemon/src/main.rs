@@ -25,7 +25,10 @@ use std::thread;
 use std::time::Duration;
 
 #[derive(Debug, Parser)]
-#[command(name = "parliant", about = "PARLIANT local meeting intelligence daemon")]
+#[command(
+    name = "parliant",
+    about = "PARLIANT local meeting intelligence daemon"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,

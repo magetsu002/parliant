@@ -5,9 +5,9 @@ use crate::{
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 use futures_util::{SinkExt, StreamExt};
-use serde_json::{json, Value};
 use parliant_audio::CancellationToken;
 use parliant_core::{AudioFrame, MonotonicTimestamp};
+use serde_json::{json, Value};
 use std::sync::mpsc;
 use std::time::Duration;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;

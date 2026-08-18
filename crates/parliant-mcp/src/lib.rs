@@ -1,7 +1,7 @@
 //! Read-only MCP access to bounded in-memory meeting state.
 
-use serde_json::{json, Value};
 use parliant_context::{MeetingSegment, MeetingState, SegmentId};
+use serde_json::{json, Value};
 use std::io::{BufRead, Write};
 use std::sync::{Arc, RwLock};
 use thiserror::Error;

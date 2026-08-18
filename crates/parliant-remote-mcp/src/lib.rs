@@ -5,8 +5,8 @@
 //! tunnel or equivalent authenticated TLS transport. The bridge itself remains read-only and
 //! delegates only the bounded meeting tools from `parliant-mcp`.
 
-use serde_json::{json, Map, Value};
 use parliant_mcp::McpService;
+use serde_json::{json, Map, Value};
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::net::{IpAddr, SocketAddr, TcpListener, TcpStream};

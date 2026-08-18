@@ -1,7 +1,7 @@
 //! Event-driven question detection over finalized meeting segments.
 
-use serde::{Deserialize, Serialize};
 use parliant_context::{MeetingSegment, SegmentId};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
