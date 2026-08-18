@@ -1,0 +1,20 @@
+[workspace]
+members = [
+    "crates/sidecar-core",
+    "crates/sidecar-audio",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "UNLICENSED"
+repository = "https://github.com/magetsu002/sidecar"
+
+[workspace.dependencies]
+sidecar-core = { path = "crates/sidecar-core" }
+thiserror = "2.0"
+signal-hook = "0.3.18"
+
+[target.'cfg(target_os = "linux")'.workspace.dependencies]
+pipewire = "0.10.0"
