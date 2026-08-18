@@ -498,27 +498,35 @@ fn safe_error_text(error: &TranscriptionError, api_key: &str) -> String {
 }
 
 fn redact_credentials(message: &str, api_key: &str) -> String {
-    let mut redacted = if api_key.is_empty() {
+    let api_redacted = if api_key.is_empty() {
         message.to_string()
     } else {
         message.replace(api_key, "[REDACTED]")
     };
+    let mut output = String::with_capacity(api_redacted.len());
+    let mut rest = api_redacted.as_str();
+
     loop {
-        let lowercase = redacted.to_ascii_lowercase();
+        let lowercase = rest.to_ascii_lowercase();
         let Some(marker) = lowercase.find("bearer ") else {
+            output.push_str(rest);
             break;
         };
         let token_start = marker + "bearer ".len();
-        let token_end = redacted[token_start..]
+        output.push_str(&rest[..token_start]);
+        let token_end = rest[token_start..]
             .find(|ch: char| ch.is_ascii_whitespace() || matches!(ch, '"' | '\'' | ',' | ';'))
             .map(|offset| token_start + offset)
-            .unwrap_or(redacted.len());
-        if token_start == token_end || redacted[token_start..token_end] == "[REDACTED]" {
+            .unwrap_or(rest.len());
+        if token_start == token_end {
+            output.push_str(&rest[marker..]);
             break;
         }
-        redacted.replace_range(token_start..token_end, "[REDACTED]");
+        output.push_str("[REDACTED]");
+        rest = &rest[token_end..];
     }
-    redacted
+
+    output
 }
 
 fn required_string(value: &Value, key: &str) -> Result<String, TranscriptionError> {
@@ -582,7 +590,10 @@ mod tests {
         let value = session_update(&config);
         assert_eq!(value["type"], "session.update");
         assert_eq!(value["session"]["type"], "transcription");
-        assert_eq!(value["session"]["audio"]["input"]["format"]["type"], "audio/pcm");
+        assert_eq!(
+            value["session"]["audio"]["input"]["format"]["type"],
+            "audio/pcm"
+        );
         assert_eq!(value["session"]["audio"]["input"]["format"]["rate"], 24_000);
         assert_eq!(
             value["session"]["audio"]["input"]["transcription"]["model"],
@@ -646,7 +657,10 @@ mod tests {
             MonotonicTimestamp::ZERO,
         )
         .unwrap();
-        assert_eq!(error, Some(TranscriptionEvent::Error("bad audio".to_string())));
+        assert_eq!(
+            error,
+            Some(TranscriptionEvent::Error("bad audio".to_string()))
+        );
 
         let ready = parse_server_event(
             r#"{"type":"session.updated","session":{"type":"transcription"}}"#,
@@ -654,7 +668,10 @@ mod tests {
             MonotonicTimestamp::ZERO,
         )
         .unwrap();
-        assert_eq!(ready, Some(TranscriptionEvent::Health(ProviderHealth::Healthy)));
+        assert_eq!(
+            ready,
+            Some(TranscriptionEvent::Health(ProviderHealth::Healthy))
+        );
     }
 
     #[test]
@@ -669,14 +686,14 @@ mod tests {
     }
 
     #[test]
-    fn provider_error_sanitization_removes_api_key_and_bearer_token() {
-        let api_key = "sk-test-secret-value";
+    fn provider_error_sanitization_removes_all_credentials() {
+        let api_key = "unit-test-api-key";
         let error = TranscriptionError::Provider(format!(
-            "request rejected; Authorization: Bearer {api_key}; provider said no"
+            "request rejected; Authorization: Bearer {api_key}; mirror Bearer second-unit-token; provider said no"
         ));
         let safe = safe_error_text(&error, api_key);
         assert!(!safe.contains(api_key));
-        assert!(!safe.contains("Bearer sk-"));
+        assert!(!safe.contains("second-unit-token"));
         assert!(safe.contains("provider said no"));
     }
 
@@ -686,7 +703,9 @@ mod tests {
         let value = audio_append_payload(&pcm);
         assert_eq!(value["type"], "input_audio_buffer.append");
         assert_eq!(
-            BASE64_STANDARD.decode(value["audio"].as_str().unwrap()).unwrap(),
+            BASE64_STANDARD
+                .decode(value["audio"].as_str().unwrap())
+                .unwrap(),
             pcm
         );
     }
