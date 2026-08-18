@@ -352,10 +352,7 @@ mod tests {
         let config = OpenAiRealtimeConfig::new("test-key").unwrap();
         let value = session_update(&config);
         assert_eq!(value["session"]["type"], "transcription");
-        assert_eq!(
-            value["session"]["audio"]["input"]["format"]["rate"],
-            24_000
-        );
+        assert_eq!(value["session"]["audio"]["input"]["format"]["rate"], 24_000);
         assert_eq!(
             value["session"]["audio"]["input"]["transcription"]["model"],
             DEFAULT_MODEL
