@@ -212,7 +212,9 @@ impl TranscriptionSession for ChannelSession {
             return Err(TranscriptionError::SessionClosed);
         }
         self.audio_tx.try_send(frame).map_err(|error| match error {
-            tokio::sync::mpsc::error::TrySendError::Full(_) => TranscriptionError::AudioBackpressure,
+            tokio::sync::mpsc::error::TrySendError::Full(_) => {
+                TranscriptionError::AudioBackpressure
+            }
             tokio::sync::mpsc::error::TrySendError::Closed(_) => TranscriptionError::SessionClosed,
         })
     }
@@ -279,8 +281,8 @@ pub(crate) fn f32le_to_pcm16_mono_24khz(frame: &AudioFrame) -> Result<Vec<u8>, T
         mono.push((sum / channels as f32).clamp(-1.0, 1.0));
     }
 
-    let output_samples = ((input_samples as u128 * 24_000_u128)
-        / u128::from(frame.format.sample_rate_hz)) as usize;
+    let output_samples =
+        ((input_samples as u128 * 24_000_u128) / u128::from(frame.format.sample_rate_hz)) as usize;
     if output_samples == 0 {
         return Ok(Vec::new());
     }
