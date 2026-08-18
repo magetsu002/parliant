@@ -183,7 +183,8 @@ impl RemoteMcpBridge {
         let shutdown = Arc::new(AtomicBool::new(false));
         let revoked = Arc::new(AtomicBool::new(false));
         let status = Arc::new(SharedStatus::new());
-        let (connection_tx, connection_rx) = mpsc::sync_channel::<TcpStream>(config.connection_queue);
+        let (connection_tx, connection_rx) =
+            mpsc::sync_channel::<TcpStream>(config.connection_queue);
         let connection_rx = Arc::new(Mutex::new(connection_rx));
         let config = Arc::new(config);
         let service = Arc::new(service);
@@ -419,13 +420,17 @@ fn route_request(
     if revoked.load(Ordering::Acquire) {
         return Err(HttpFailure::unauthorized());
     }
-    let authorization = single_header(&request.headers, "authorization")
-        .ok_or_else(HttpFailure::unauthorized)?;
+    let authorization =
+        single_header(&request.headers, "authorization").ok_or_else(HttpFailure::unauthorized)?;
     if !bearer_matches(authorization, &config.bearer_token) {
         return Err(HttpFailure::unauthorized());
     }
     if let Some(origin) = optional_single_header(&request.headers, "origin")? {
-        if !config.allowed_origins.iter().any(|allowed| allowed == origin) {
+        if !config
+            .allowed_origins
+            .iter()
+            .any(|allowed| allowed == origin)
+        {
             return Err(HttpFailure {
                 status: 403,
                 reason: "Forbidden",
@@ -465,14 +470,18 @@ fn route_request(
         .and_then(Value::as_str)
         .ok_or_else(|| HttpFailure::bad_request("JSON-RPC method required"))?;
     if body_method != header_method {
-        return Err(HttpFailure::bad_request("Mcp-Method does not match JSON-RPC method"));
+        return Err(HttpFailure::bad_request(
+            "Mcp-Method does not match JSON-RPC method",
+        ));
     }
     validate_request_meta(&value)?;
 
     match body_method {
         "server/discover" => {
             if optional_single_header(&request.headers, "mcp-name")?.is_some() {
-                return Err(HttpFailure::bad_request("Mcp-Name is not valid for server/discover"));
+                return Err(HttpFailure::bad_request(
+                    "Mcp-Name is not valid for server/discover",
+                ));
             }
             let id = value.get("id").cloned().unwrap_or(Value::Null);
             let response = json!({
@@ -492,7 +501,9 @@ fn route_request(
         }
         "tools/list" => {
             if optional_single_header(&request.headers, "mcp-name")?.is_some() {
-                return Err(HttpFailure::bad_request("Mcp-Name is not valid for tools/list"));
+                return Err(HttpFailure::bad_request(
+                    "Mcp-Name is not valid for tools/list",
+                ));
             }
             let response = delegate(service, &request.body, true)?;
             Ok((response, true))
@@ -505,7 +516,9 @@ fn route_request(
             let header_name = single_header(&request.headers, "mcp-name")
                 .ok_or_else(|| HttpFailure::bad_request("Mcp-Name required for tools/call"))?;
             if name != header_name {
-                return Err(HttpFailure::bad_request("Mcp-Name does not match tools/call name"));
+                return Err(HttpFailure::bad_request(
+                    "Mcp-Name does not match tools/call name",
+                ));
             }
             if !READ_ONLY_TOOLS.contains(&name) {
                 return Err(HttpFailure {
@@ -544,11 +557,17 @@ fn delegate(service: &McpService, request: &str, cacheable: bool) -> Result<Stri
         authenticate: false,
     })?;
     if let Some(result) = response.get_mut("result").and_then(Value::as_object_mut) {
-        result.insert("resultType".to_string(), Value::String("complete".to_string()));
+        result.insert(
+            "resultType".to_string(),
+            Value::String("complete".to_string()),
+        );
         result.insert("_meta".to_string(), Value::Object(server_meta()));
         if cacheable {
             result.insert("ttlMs".to_string(), json!(60_000));
-            result.insert("cacheScope".to_string(), Value::String("private".to_string()));
+            result.insert(
+                "cacheScope".to_string(),
+                Value::String("private".to_string()),
+            );
         }
     }
     Ok(response.to_string())
@@ -566,7 +585,9 @@ fn validate_request_meta(request: &Value) -> Result<(), HttpFailure> {
         .and_then(Value::as_str)
     {
         if version != REMOTE_MCP_PROTOCOL_VERSION {
-            return Err(HttpFailure::bad_request("request _meta protocol version mismatch"));
+            return Err(HttpFailure::bad_request(
+                "request _meta protocol version mismatch",
+            ));
         }
     }
     if let Some(client_info) = meta.get("io.modelcontextprotocol/clientInfo") {
@@ -576,7 +597,9 @@ fn validate_request_meta(request: &Value) -> Result<(), HttpFailure> {
         if client_info.get("name").and_then(Value::as_str).is_none()
             || client_info.get("version").and_then(Value::as_str).is_none()
         {
-            return Err(HttpFailure::bad_request("clientInfo name/version required when present"));
+            return Err(HttpFailure::bad_request(
+                "clientInfo name/version required when present",
+            ));
         }
     }
     Ok(())
@@ -658,10 +681,15 @@ fn read_http_request(stream: &mut TcpStream, max_body: usize) -> Result<HttpRequ
         if name.is_empty() {
             return Err(HttpFailure::bad_request("empty HTTP header name"));
         }
-        headers.entry(name).or_default().push(value.trim().to_string());
+        headers
+            .entry(name)
+            .or_default()
+            .push(value.trim().to_string());
     }
     if headers.contains_key("transfer-encoding") {
-        return Err(HttpFailure::bad_request("transfer-encoding is not accepted"));
+        return Err(HttpFailure::bad_request(
+            "transfer-encoding is not accepted",
+        ));
     }
     let content_length = single_header(&headers, "content-length")
         .ok_or_else(|| HttpFailure::bad_request("Content-Length required"))?
@@ -719,7 +747,9 @@ fn optional_single_header<'a>(
     match headers.get(name) {
         None => Ok(None),
         Some(values) if values.len() == 1 => Ok(values.first().map(String::as_str)),
-        Some(_) => Err(HttpFailure::bad_request("duplicate security-sensitive header")),
+        Some(_) => Err(HttpFailure::bad_request(
+            "duplicate security-sensitive header",
+        )),
     }
 }
 
@@ -742,7 +772,9 @@ fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
 }
 
 fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack.windows(needle.len()).position(|window| window == needle)
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
 }
 
 fn write_http_json(
@@ -840,8 +872,7 @@ mod tests {
     }
 
     fn config() -> RemoteBridgeConfig {
-        RemoteBridgeConfig::enabled_loopback(SocketAddr::from(([127, 0, 0, 1], 0)), TOKEN)
-            .unwrap()
+        RemoteBridgeConfig::enabled_loopback(SocketAddr::from(([127, 0, 0, 1], 0)), TOKEN).unwrap()
     }
 
     fn rpc_request(method: &str, name: Option<&str>, params: Value) -> String {
@@ -886,10 +917,7 @@ mod tests {
             Err(RemoteMcpError::NonLoopbackBind(_))
         ));
         assert!(matches!(
-            RemoteBridgeConfig::enabled_loopback(
-                SocketAddr::from(([127, 0, 0, 1], 3000)),
-                "short"
-            ),
+            RemoteBridgeConfig::enabled_loopback(SocketAddr::from(([127, 0, 0, 1], 3000)), "short"),
             Err(RemoteMcpError::WeakBearerToken)
         ));
     }
@@ -924,7 +952,9 @@ mod tests {
         let response = response_json(&send(bridge.local_addr(), &request));
         let tools = response["result"]["tools"].as_array().unwrap();
         assert_eq!(tools.len(), READ_ONLY_TOOLS.len());
-        assert!(tools.iter().all(|tool| tool["annotations"]["readOnlyHint"] == true));
+        assert!(tools
+            .iter()
+            .all(|tool| tool["annotations"]["readOnlyHint"] == true));
         assert!(tools
             .iter()
             .all(|tool| tool["annotations"]["destructiveHint"] == false));
@@ -1012,9 +1042,7 @@ mod tests {
 
         let duplicate = valid.replace(
             &format!("Authorization: Bearer {TOKEN}\r\n"),
-            &format!(
-                "Authorization: Bearer {TOKEN}\r\nAuthorization: Bearer {TOKEN}\r\n"
-            ),
+            &format!("Authorization: Bearer {TOKEN}\r\nAuthorization: Bearer {TOKEN}\r\n"),
         );
         assert!(send(bridge.local_addr(), &duplicate).starts_with("HTTP/1.1 401"));
         bridge.stop();
