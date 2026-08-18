@@ -24,15 +24,15 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal --component rustfmt --component clippy
           rustup default stable
-      - name: Apply and commit canonical formatting
+      - name: Generate and commit dependency lockfile
         if: github.event_name == 'pull_request'
         run: |
-          cargo fmt --all
-          if ! git diff --quiet; then
+          cargo generate-lockfile
+          if ! git diff --quiet -- Cargo.lock || ! git ls-files --error-unmatch Cargo.lock >/dev/null 2>&1; then
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add crates/sidecar-daemon/src/main.rs crates/sidecar-runtime/src/lib.rs
-            git commit -m 'style(m9): apply Rust formatting'
+            git add Cargo.lock
+            git commit -m 'build(m9): lock V1 dependencies'
             git push origin HEAD:feat/m9-v1-hardening
           fi
       - name: Formatting
