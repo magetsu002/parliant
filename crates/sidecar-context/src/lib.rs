@@ -24,7 +24,7 @@ impl From<SpeakerMetadata> for MeetingSpeaker {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MeetingSegment {
     pub id: SegmentId,
     pub provider_segment_id: String,
@@ -130,7 +130,10 @@ impl MeetingState {
         &mut self,
         segment: TranscriptSegment,
     ) -> Result<InsertOutcome, MeetingStateError> {
-        if self.seen_provider_ids.contains(&segment.provider_segment_id) {
+        if self
+            .seen_provider_ids
+            .contains(&segment.provider_segment_id)
+        {
             return Ok(InsertOutcome::Duplicate);
         }
         let text_bytes = segment.text.len();
@@ -285,9 +288,13 @@ mod tests {
     fn provider_duplicates_do_not_create_canonical_segments() {
         let mut state = state(10, 1024);
         state.start_session();
-        state.ingest_final(transcript("same", "first", None)).unwrap();
+        state
+            .ingest_final(transcript("same", "first", None))
+            .unwrap();
         assert_eq!(
-            state.ingest_final(transcript("same", "duplicate", None)).unwrap(),
+            state
+                .ingest_final(transcript("same", "duplicate", None))
+                .unwrap(),
             InsertOutcome::Duplicate
         );
         assert_eq!(state.status().retained_segments, 1);
@@ -310,9 +317,15 @@ mod tests {
     fn recent_search_and_speakers_are_bounded_views() {
         let mut state = state(10, 1024);
         state.start_session();
-        state.ingest_final(transcript("1", "deployment is Friday", Some("Sarah"))).unwrap();
-        state.ingest_final(transcript("2", "other topic", Some("Alex"))).unwrap();
-        state.ingest_final(transcript("3", "deployment rollback", Some("Sarah"))).unwrap();
+        state
+            .ingest_final(transcript("1", "deployment is Friday", Some("Sarah")))
+            .unwrap();
+        state
+            .ingest_final(transcript("2", "other topic", Some("Alex")))
+            .unwrap();
+        state
+            .ingest_final(transcript("3", "deployment rollback", Some("Sarah")))
+            .unwrap();
         assert_eq!(state.recent(1)[0].provider_segment_id, "3");
         let results = state.search("DEPLOYMENT", 1);
         assert_eq!(results.len(), 1);
@@ -324,13 +337,17 @@ mod tests {
     fn session_reset_clears_text_and_restarts_segment_ids() {
         let mut state = state(10, 1024);
         let first_session = state.start_session();
-        state.ingest_final(transcript("1", "secret meeting text", None)).unwrap();
+        state
+            .ingest_final(transcript("1", "secret meeting text", None))
+            .unwrap();
         state.stop_session();
         let second_session = state.start_session();
         assert!(second_session > first_session);
         assert!(state.retained_segments().is_empty());
         assert_eq!(
-            state.ingest_final(transcript("1", "new meeting", None)).unwrap(),
+            state
+                .ingest_final(transcript("1", "new meeting", None))
+                .unwrap(),
             InsertOutcome::Inserted(SegmentId(1))
         );
     }
