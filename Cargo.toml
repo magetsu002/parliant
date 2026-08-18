@@ -9,6 +9,7 @@ members = [
     "crates/sidecar-orchestrator",
     "crates/sidecar-ipc",
     "crates/sidecar-remote-mcp",
+    "crates/sidecar-runtime",
     "crates/sidecar-daemon",
     "apps/sidecar-overlay",
 ]
@@ -30,6 +31,7 @@ sidecar-mcp = { path = "crates/sidecar-mcp" }
 sidecar-orchestrator = { path = "crates/sidecar-orchestrator" }
 sidecar-ipc = { path = "crates/sidecar-ipc" }
 sidecar-remote-mcp = { path = "crates/sidecar-remote-mcp" }
+sidecar-runtime = { path = "crates/sidecar-runtime" }
 thiserror = "2.0"
 signal-hook = "0.3.18"
 clap = { version = "4.5", features = ["derive"] }

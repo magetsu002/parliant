@@ -3,9 +3,26 @@ use sidecar_audio::{
     bounded_frame_channel, install_termination_signals, run_pipewire_capture, CancellationToken,
     CaptureEvent, CaptureMode, CaptureTarget, StopReason,
 };
+use sidecar_context::{MeetingState, MeetingStoreConfig};
+use sidecar_detect::{HeuristicSemanticClassifier, QuestionDetectorConfig};
+use sidecar_ipc::{
+    default_socket_path, DaemonEvent, IpcServer, IpcServerHandle, OverlayAction,
+    TranscriptionUiState,
+};
+use sidecar_mcp::McpService;
+use sidecar_orchestrator::{OpenAiResponsesConfig, OpenAiResponsesProvider};
+use sidecar_remote_mcp::{RemoteBridgeConfig, RemoteMcpBridge};
+use sidecar_runtime::{RuntimeEngine, RuntimeStats};
+use sidecar_transcribe::{
+    OpenAiRealtimeConfig, OpenAiRealtimeProvider, TranscriptionError, TranscriptionProvider,
+    TranscriptionSession,
+};
+use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::process::ExitCode;
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, RwLock};
 use std::thread;
+use std::time::Duration;
 
 #[derive(Debug, Parser)]
 #[command(name = "sidecar", about = "SIDECAR local meeting intelligence daemon")]
@@ -30,6 +47,61 @@ enum Command {
         #[arg(long, default_value_t = 64)]
         buffer_frames: usize,
     },
+
+    /// Run the complete local V1 meeting pipeline.
+    Meet {
+        /// PipeWire node.name or object.serial. SIDECAR never chooses a fallback target.
+        #[arg(long)]
+        target: String,
+
+        /// Capture the selected sink's monitor ports instead of a source node.
+        #[arg(long)]
+        sink_monitor: bool,
+
+        /// Maximum number of captured audio frames queued in memory.
+        #[arg(long, default_value_t = 64)]
+        buffer_frames: usize,
+
+        /// OpenAI Responses API model used for answer suggestions.
+        #[arg(long)]
+        answer_model: String,
+
+        /// Environment variable containing the OpenAI API key.
+        #[arg(long, default_value = "OPENAI_API_KEY")]
+        api_key_env: String,
+
+        /// Optional environment variable containing private response instructions.
+        #[arg(long, default_value = "SIDECAR_USER_INSTRUCTIONS")]
+        user_instructions_env: String,
+
+        /// Override the private overlay Unix-domain socket path.
+        #[arg(long)]
+        overlay_socket: Option<PathBuf>,
+
+        /// Run without the presentation overlay IPC server.
+        #[arg(long)]
+        no_overlay: bool,
+
+        /// Explicitly enable the loopback-only remote MCP bridge.
+        #[arg(long)]
+        remote_mcp: bool,
+
+        /// Loopback address for the opt-in remote MCP bridge. Port 0 selects a free local port.
+        #[arg(long, default_value = "127.0.0.1:0")]
+        remote_mcp_bind: SocketAddr,
+
+        /// Environment variable containing the remote MCP bearer token.
+        #[arg(long, default_value = "SIDECAR_REMOTE_MCP_TOKEN")]
+        remote_mcp_token_env: String,
+
+        /// Browser Origin allowed to call the remote MCP endpoint. May be repeated.
+        #[arg(long)]
+        remote_origin: Vec<String>,
+
+        /// Answer timeout before the current suggestion is cancelled.
+        #[arg(long, default_value_t = 20)]
+        answer_timeout_seconds: u64,
+    },
 }
 
 fn main() -> ExitCode {
@@ -39,6 +111,363 @@ fn main() -> ExitCode {
             sink_monitor,
             buffer_frames,
         } => run_capture(target, sink_monitor, buffer_frames),
+        Command::Meet {
+            target,
+            sink_monitor,
+            buffer_frames,
+            answer_model,
+            api_key_env,
+            user_instructions_env,
+            overlay_socket,
+            no_overlay,
+            remote_mcp,
+            remote_mcp_bind,
+            remote_mcp_token_env,
+            remote_origin,
+            answer_timeout_seconds,
+        } => match run_meeting(MeetingOptions {
+            target,
+            sink_monitor,
+            buffer_frames,
+            answer_model,
+            api_key_env,
+            user_instructions_env,
+            overlay_socket,
+            no_overlay,
+            remote_mcp,
+            remote_mcp_bind,
+            remote_mcp_token_env,
+            remote_origin,
+            answer_timeout: Duration::from_secs(answer_timeout_seconds.max(1)),
+        }) {
+            Ok(code) => code,
+            Err(error) => {
+                eprintln!("sidecar: {error}");
+                ExitCode::FAILURE
+            }
+        },
+    }
+}
+
+#[derive(Debug)]
+struct MeetingOptions {
+    target: String,
+    sink_monitor: bool,
+    buffer_frames: usize,
+    answer_model: String,
+    api_key_env: String,
+    user_instructions_env: String,
+    overlay_socket: Option<PathBuf>,
+    no_overlay: bool,
+    remote_mcp: bool,
+    remote_mcp_bind: SocketAddr,
+    remote_mcp_token_env: String,
+    remote_origin: Vec<String>,
+    answer_timeout: Duration,
+}
+
+fn run_meeting(options: MeetingOptions) -> Result<ExitCode, String> {
+    let api_key = std::env::var(&options.api_key_env)
+        .map_err(|_| format!("{} must be set", options.api_key_env))?;
+    let user_instructions = std::env::var(&options.user_instructions_env)
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+
+    let target = CaptureTarget::new(
+        options.target,
+        if options.sink_monitor {
+            CaptureMode::SinkMonitor
+        } else {
+            CaptureMode::Source
+        },
+    )
+    .map_err(|error| error.to_string())?;
+    let (frame_tx, frame_rx) =
+        bounded_frame_channel(options.buffer_frames).map_err(|error| error.to_string())?;
+    let capture_stats = frame_tx.clone();
+
+    let cancellation = CancellationToken::new();
+    install_termination_signals(&cancellation).map_err(|error| error.to_string())?;
+
+    let meeting_state = Arc::new(RwLock::new(
+        MeetingState::new(MeetingStoreConfig::default()).map_err(|error| error.to_string())?,
+    ));
+    meeting_state
+        .write()
+        .map_err(|_| "meeting state lock unavailable".to_string())?
+        .start_session();
+
+    let overlay = if options.no_overlay {
+        None
+    } else {
+        let socket = match options.overlay_socket {
+            Some(path) => path,
+            None => default_socket_path().map_err(|error| error.to_string())?,
+        };
+        let server = IpcServer::bind(socket)
+            .map_err(|error| error.to_string())?
+            .spawn()
+            .map_err(|error| error.to_string())?;
+        Some(Arc::new(server))
+    };
+    publish(
+        overlay.as_deref(),
+        DaemonEvent::Listening { active: true },
+    );
+    publish(
+        overlay.as_deref(),
+        DaemonEvent::Transcription {
+            state: TranscriptionUiState::Connecting,
+        },
+    );
+
+    let remote_bridge = if options.remote_mcp {
+        let token = std::env::var(&options.remote_mcp_token_env)
+            .map_err(|_| format!("{} must be set when --remote-mcp is enabled", options.remote_mcp_token_env))?;
+        let mut config = RemoteBridgeConfig::enabled_loopback(options.remote_mcp_bind, token)
+            .map_err(|error| error.to_string())?;
+        for origin in options.remote_origin {
+            config = config
+                .allow_origin(origin)
+                .map_err(|error| error.to_string())?;
+        }
+        let bridge = RemoteMcpBridge::start(config, McpService::new(Arc::clone(&meeting_state)))
+            .map_err(|error| error.to_string())?;
+        eprintln!(
+            "sidecar: remote MCP enabled on loopback {} (authenticated; transport tunnel required for cloud access)",
+            bridge.local_addr()
+        );
+        Some(bridge)
+    } else {
+        None
+    };
+
+    let transcriber = OpenAiRealtimeProvider::new(
+        OpenAiRealtimeConfig::new(api_key.clone()).map_err(|error| error.to_string())?,
+    );
+    let transcription_session = transcriber.connect().map_err(|error| error.to_string())?;
+    let answer_provider = OpenAiResponsesProvider::new(
+        OpenAiResponsesConfig::new(api_key, options.answer_model)
+            .map_err(|error| error.to_string())?,
+    );
+    let engine = RuntimeEngine::new(
+        Arc::clone(&meeting_state),
+        HeuristicSemanticClassifier,
+        QuestionDetectorConfig::default(),
+        answer_provider,
+        options.answer_timeout,
+        user_instructions,
+    );
+
+    let pipeline_cancellation = cancellation.clone();
+    let pipeline_overlay = overlay.clone();
+    let pipeline = thread::Builder::new()
+        .name("sidecar-v1-pipeline".to_string())
+        .spawn(move || {
+            run_pipeline(
+                frame_rx,
+                transcription_session,
+                engine,
+                pipeline_overlay,
+                pipeline_cancellation,
+            )
+        })
+        .map_err(|error| format!("failed to start V1 pipeline: {error}"))?;
+
+    let (capture_event_tx, capture_event_rx) = mpsc::channel();
+    let event_overlay = overlay.clone();
+    let capture_events = thread::Builder::new()
+        .name("sidecar-capture-events".to_string())
+        .spawn(move || {
+            while let Ok(event) = capture_event_rx.recv() {
+                print_event(&event);
+                match event {
+                    CaptureEvent::Streaming => publish(
+                        event_overlay.as_deref(),
+                        DaemonEvent::Listening { active: true },
+                    ),
+                    CaptureEvent::SourceLost => publish(
+                        event_overlay.as_deref(),
+                        DaemonEvent::Error {
+                            message: "selected audio source was lost".to_string(),
+                        },
+                    ),
+                    CaptureEvent::Error(_) => publish(
+                        event_overlay.as_deref(),
+                        DaemonEvent::Error {
+                            message: "audio capture backend reported an error".to_string(),
+                        },
+                    ),
+                    CaptureEvent::Stopped(_) => publish(
+                        event_overlay.as_deref(),
+                        DaemonEvent::Listening { active: false },
+                    ),
+                    CaptureEvent::Starting { .. }
+                    | CaptureEvent::Connecting
+                    | CaptureEvent::FormatNegotiated(_) => {}
+                }
+            }
+        })
+        .map_err(|error| format!("failed to start capture event observer: {error}"))?;
+
+    let capture_result = run_pipewire_capture(
+        target,
+        frame_tx,
+        capture_event_tx,
+        cancellation.clone(),
+    );
+    cancellation.cancel();
+
+    let pipeline_stats = pipeline
+        .join()
+        .map_err(|_| "V1 pipeline thread panicked".to_string())?;
+    let _ = capture_events.join();
+
+    if let Some(bridge) = &remote_bridge {
+        bridge.stop();
+    }
+    if let Some(server) = &overlay {
+        publish(Some(server.as_ref()), DaemonEvent::Listening { active: false });
+        server.stop();
+    }
+
+    let capture_stats = capture_stats.stats();
+    eprintln!(
+        "sidecar: V1 summary captured={} capture_dropped={} transcribe_backpressure={} finalized={} duplicates={} questions={} answer_deltas={} answer_failures={} transcription_failures={} first_answer_latency_ms={:?}",
+        capture_stats.accepted,
+        capture_stats.dropped_full,
+        pipeline_stats.transcribe_backpressure,
+        pipeline_stats.runtime.finalized_segments,
+        pipeline_stats.runtime.duplicate_segments,
+        pipeline_stats.runtime.detected_questions,
+        pipeline_stats.runtime.answer_deltas,
+        pipeline_stats.runtime.answer_failures,
+        pipeline_stats.runtime.transcription_failures,
+        pipeline_stats.runtime.first_answer_latency_ms,
+    );
+
+    match capture_result {
+        Ok(StopReason::Cancelled) => Ok(ExitCode::SUCCESS),
+        Ok(StopReason::SourceLost) => Ok(ExitCode::from(3)),
+        Ok(StopReason::BackendError) => Ok(ExitCode::FAILURE),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct PipelineStats {
+    runtime: RuntimeStats,
+    transcribe_backpressure: u64,
+}
+
+fn run_pipeline(
+    frame_rx: mpsc::Receiver<sidecar_core::AudioFrame>,
+    transcription: Box<dyn TranscriptionSession>,
+    mut engine: RuntimeEngine<OpenAiResponsesProvider, HeuristicSemanticClassifier>,
+    overlay: Option<Arc<IpcServerHandle>>,
+    cancellation: CancellationToken,
+) -> PipelineStats {
+    let mut transcribe_backpressure = 0_u64;
+    while !cancellation.is_cancelled() {
+        match frame_rx.recv_timeout(Duration::from_millis(10)) {
+            Ok(frame) => match transcription.push_audio(frame) {
+                Ok(()) => {}
+                Err(TranscriptionError::AudioBackpressure) => {
+                    transcribe_backpressure = transcribe_backpressure.saturating_add(1);
+                }
+                Err(_) => {
+                    publish(
+                        overlay.as_deref(),
+                        DaemonEvent::Degraded {
+                            message: "transcription session became unavailable".to_string(),
+                        },
+                    );
+                    cancellation.cancel();
+                    break;
+                }
+            },
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+
+        for _ in 0..32 {
+            match transcription.recv_event_timeout(Duration::ZERO) {
+                Ok(Some(event)) => match engine.handle_transcription(event) {
+                    Ok(events) => {
+                        for event in events {
+                            publish(overlay.as_deref(), event);
+                        }
+                    }
+                    Err(_) => publish(
+                        overlay.as_deref(),
+                        DaemonEvent::Degraded {
+                            message: "meeting reasoning path is temporarily degraded".to_string(),
+                        },
+                    ),
+                },
+                Ok(None) => break,
+                Err(_) => {
+                    publish(
+                        overlay.as_deref(),
+                        DaemonEvent::Degraded {
+                            message: "transcription event stream became unavailable".to_string(),
+                        },
+                    );
+                    cancellation.cancel();
+                    break;
+                }
+            }
+        }
+
+        for _ in 0..16 {
+            match engine.poll_answer(Duration::ZERO) {
+                Ok(Some(event)) => publish(overlay.as_deref(), event),
+                Ok(None) => break,
+                Err(_) => {
+                    publish(
+                        overlay.as_deref(),
+                        DaemonEvent::Degraded {
+                            message: "answer provider is temporarily unavailable".to_string(),
+                        },
+                    );
+                    break;
+                }
+            }
+        }
+
+        if let Some(server) = overlay.as_deref() {
+            for _ in 0..8 {
+                match server.recv_action_timeout(Duration::ZERO) {
+                    Ok(Some(action)) => match action.action {
+                        OverlayAction::Dismiss => {
+                            if let Some(event) = engine.handle_overlay_action(OverlayAction::Dismiss)
+                            {
+                                publish(Some(server), event);
+                            }
+                        }
+                        OverlayAction::StopListening => {
+                            cancellation.cancel();
+                            break;
+                        }
+                    },
+                    Ok(None) => break,
+                    Err(_) => break,
+                }
+            }
+        }
+    }
+
+    transcription.cancel();
+    engine.shutdown();
+    PipelineStats {
+        runtime: engine.stats(),
+        transcribe_backpressure,
+    }
+}
+
+fn publish(server: Option<&IpcServerHandle>, event: DaemonEvent) {
+    if let Some(server) = server {
+        let _ = server.publish(event);
     }
 }
 
@@ -153,7 +582,7 @@ fn print_event(event: &CaptureEvent) {
         ),
         CaptureEvent::Streaming => eprintln!("sidecar: streaming"),
         CaptureEvent::SourceLost => eprintln!("sidecar: selected source lost"),
-        CaptureEvent::Error(message) => eprintln!("sidecar: capture error: {message}"),
+        CaptureEvent::Error(_message) => eprintln!("sidecar: capture backend error"),
         CaptureEvent::Stopped(reason) => eprintln!("sidecar: stopped: {reason:?}"),
     }
 }
