@@ -2,21 +2,44 @@
 
 **Intelligence beside you.**
 
-SIDECAR is a local-first meeting intelligence tool for Linux. The goal is simple: capture meeting audio locally, transcribe it in real time, detect when the user is being asked a question, retrieve relevant context, and surface a private suggested answer without joining the meeting as a bot.
+SIDECAR is a local-first meeting intelligence tool for Linux. It is designed to capture meeting playback selected by the user, transcribe it in real time, detect when the user is being asked something, retrieve relevant context, and surface a private suggested answer without joining the meeting as a bot.
 
 ## Principles
 
-- Local-first by default.
 - Linux/Arch first.
-- No automatic speaking into meetings.
+- Local-first state and explicit data flow.
 - No raw-audio persistence by default.
+- Transcript persistence off by default.
 - Private suggestions stay on the user's machine.
-- External context access should be explicit and read-only unless the user chooses otherwise.
+- Answer generation runs only when needed instead of continuously.
+- External context is explicit and read-only by default.
+- No automatic speaking into meetings.
 - Real meeting transcripts, credentials, and customer data must never be committed to this repository.
+
+## Architecture
+
+SIDECAR separates the always-on transcription path from the expensive reasoning path:
+
+```text
+meeting audio -> PipeWire -> transcription -> transcript store
+                                      |
+                                      v
+                              question detector
+                                      |
+                                      v
+                              answer orchestrator
+                                 /          \
+                         local MCP       allowed context
+                                 \          /
+                                      v
+                               private overlay
+```
+
+The detailed pre-implementation architecture is documented in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
 ## Status
 
-SIDECAR is currently **pre-implementation**. The repository is being kept intentionally small until the first working slice exists.
+SIDECAR is currently **pre-implementation**. The architecture and repository boundaries are being fixed before product code is added.
 
 ## Contributing
 
