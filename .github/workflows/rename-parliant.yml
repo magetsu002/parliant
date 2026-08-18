@@ -1,3 +1,4 @@
+# Temporary head-side trigger; removed by the base runner after the rename.
 name: Rename project to Parliant
 
 on:
