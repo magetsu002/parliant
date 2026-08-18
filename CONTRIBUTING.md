@@ -1,21 +1,13 @@
 # Contributing
 
-Read `AGENTS.md` and the relevant ADRs before changing implementation behavior.
+SIDECAR is still pre-implementation, so keep changes narrow and avoid speculative scaffolding.
 
-Use focused branches named by milestone or bug, for example:
+Before opening a pull request:
 
-```text
-feat/m1-pipewire-capture
-fix/transcript-deduplication
-```
+- explain the problem the change solves;
+- keep unrelated cleanup out of the diff;
+- include tests once executable code exists;
+- document any privacy or security impact;
+- never include real meeting audio, transcripts, credentials, private repository content, or customer data.
 
-Every PR should state:
-
-- exact scope;
-- acceptance criteria;
-- tests run;
-- live smoke tests run, if any;
-- privacy/security impact;
-- anything not verified.
-
-Do not combine architecture changes with unrelated cleanup.
+Large architectural changes should be discussed in an issue before implementation.
