@@ -565,7 +565,6 @@ fn truncate_chars(text: &str, max_chars: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write as _;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn socket_path(name: &str) -> PathBuf {
