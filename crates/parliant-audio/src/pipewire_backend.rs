@@ -12,7 +12,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use sidecar_core::{AudioFormat, AudioFrame, MonotonicTimestamp, SampleFormat};
+use parliant_core::{AudioFormat, AudioFrame, MonotonicTimestamp, SampleFormat};
 
 struct UserData {
     negotiated: spa::param::audio::AudioInfoRaw,
@@ -68,7 +68,7 @@ pub fn run_pipewire_capture(
         },
     };
 
-    let stream = pw::stream::StreamBox::new(&core, "sidecar-capture", props)
+    let stream = pw::stream::StreamBox::new(&core, "parliant-capture", props)
         .map_err(|error| CaptureError::Backend(error.to_string()))?;
 
     let data = UserData {

@@ -1,12 +1,12 @@
 [package]
-name = "sidecar-audio"
+name = "parliant-audio"
 version.workspace = true
 edition.workspace = true
 repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-sidecar-core.workspace = true
+parliant-core.workspace = true
 thiserror.workspace = true
 signal-hook.workspace = true
 

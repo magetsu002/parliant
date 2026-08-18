@@ -1,5 +1,5 @@
 [package]
-name = "sidecar-core"
+name = "parliant-core"
 version.workspace = true
 edition.workspace = true
 repository.workspace = true

@@ -1,0 +1,23 @@
+[package]
+name = "parliant-daemon"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "parliant"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+parliant-audio.workspace = true
+parliant-context.workspace = true
+parliant-core.workspace = true
+parliant-detect.workspace = true
+parliant-ipc.workspace = true
+parliant-mcp.workspace = true
+parliant-orchestrator.workspace = true
+parliant-remote-mcp.workspace = true
+parliant-runtime.workspace = true
+parliant-transcribe.workspace = true

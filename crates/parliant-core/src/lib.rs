@@ -1,4 +1,4 @@
-//! Domain types shared by SIDECAR's implemented vertical slices.
+//! Domain types shared by PARLIANT's implemented vertical slices.
 
 /// The sample representation carried by an [`AudioFrame`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

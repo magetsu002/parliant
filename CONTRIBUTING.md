@@ -1,6 +1,6 @@
 # Contributing
 
-SIDECAR is still pre-implementation. Keep changes narrow and avoid speculative scaffolding.
+PARLIANT is still pre-implementation. Keep changes narrow and avoid speculative scaffolding.
 
 Before changing architecture or implementation behavior, read [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 

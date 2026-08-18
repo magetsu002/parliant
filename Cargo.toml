@@ -1,21 +1,49 @@
 [workspace]
 members = [
-    "crates/sidecar-core",
-    "crates/sidecar-audio",
-    "crates/sidecar-daemon",
+    "crates/parliant-core",
+    "crates/parliant-audio",
+    "crates/parliant-transcribe",
+    "crates/parliant-context",
+    "crates/parliant-detect",
+    "crates/parliant-mcp",
+    "crates/parliant-orchestrator",
+    "crates/parliant-ipc",
+    "crates/parliant-remote-mcp",
+    "crates/parliant-runtime",
+    "crates/parliant-daemon",
+    "apps/parliant-overlay",
 ]
 resolver = "2"
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-repository = "https://github.com/magetsu002/sidecar"
+repository = "https://github.com/magetsu002/parliant"
 publish = false
 
 [workspace.dependencies]
-sidecar-core = { path = "crates/sidecar-core" }
-sidecar-audio = { path = "crates/sidecar-audio" }
+parliant-core = { path = "crates/parliant-core" }
+parliant-audio = { path = "crates/parliant-audio" }
+parliant-transcribe = { path = "crates/parliant-transcribe" }
+parliant-context = { path = "crates/parliant-context" }
+parliant-detect = { path = "crates/parliant-detect" }
+parliant-mcp = { path = "crates/parliant-mcp" }
+parliant-orchestrator = { path = "crates/parliant-orchestrator" }
+parliant-ipc = { path = "crates/parliant-ipc" }
+parliant-remote-mcp = { path = "crates/parliant-remote-mcp" }
+parliant-runtime = { path = "crates/parliant-runtime" }
 thiserror = "2.0"
 signal-hook = "0.3.18"
 clap = { version = "4.5", features = ["derive"] }
 pipewire = "0.10.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+base64 = "0.22"
+futures-util = "0.3"
+tokio = { version = "1", features = ["rt-multi-thread", "time", "sync", "macros"] }
+tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+libc = "0.2"
+gtk = "0.18.2"
+gdk = "0.18.2"
+gtk-layer-shell = { version = "0.8.2", features = ["v0_6"] }

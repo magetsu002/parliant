@@ -1,52 +1,83 @@
-# SIDECAR
+# Parliant
 
-**Intelligence beside you.**
+*Intelligence beside you.*
 
-SIDECAR is a local-first meeting intelligence tool for Linux. It is designed to capture meeting playback selected by the user, transcribe it in real time, detect when the user is being asked something, retrieve relevant context, and surface a private suggested answer without joining the meeting as a bot.
+**Release line:** V1 (`v1.0.0`).
 
-## Principles
+Parliant is a Linux-first local meeting intelligence daemon. V1 captures an explicitly selected PipeWire source or sink monitor, transcribes audio through a provider boundary, keeps bounded finalized meeting text in memory, detects likely questions, generates private answer suggestions, exposes bounded read-only meeting context through MCP, and renders suggestions in a private Wayland overlay.
 
-- Linux/Arch first.
-- Local-first state and explicit data flow.
-- No raw-audio persistence by default.
-- Transcript persistence off by default.
-- Private suggestions stay on the user's machine.
-- Answer generation runs only when needed instead of continuously.
-- External context is explicit and read-only by default.
-- No automatic speaking into meetings.
-- Real meeting transcripts, credentials, and customer data must never be committed to this repository.
+## V1 architecture
 
-## Architecture
+The Rust daemon owns capture, provider credentials, canonical meeting state, question detection, answer orchestration, local IPC, and the optional remote MCP bridge. The overlay is presentation-only. Raw audio is never persisted by the V1 implementation and finalized transcript state is memory-only by default.
 
-SIDECAR separates the always-on transcription path from the expensive reasoning path:
+Important boundaries:
 
-```text
-meeting audio -> PipeWire -> transcription -> transcript store
-                                      |
-                                      v
-                              question detector
-                                      |
-                                      v
-                              answer orchestrator
-                                 /          \
-                         local MCP       allowed context
-                                 \          /
-                                      v
-                               private overlay
+- PipeWire target selection is explicit; Parliant does not silently fall back to another audio source.
+- Only finalized transcript segments become canonical meeting text.
+- Meeting transcript is untrusted data, never authorization or tool instructions.
+- Answer generation is event-driven; it does not continuously invoke the answer model.
+- MCP is read-only and bounded. V1 exposes no shell, process, file-write, or other machine-write tool.
+- The remote bridge is disabled by default and binds only to loopback. A cloud client requires an authenticated encrypted tunnel; Parliant does not expose localhost directly to the public internet.
+- The overlay never owns capture, credentials, or canonical state and never speaks answers automatically.
+
+The full architecture contract is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+## Build
+
+Arch Linux dependencies and installation steps are documented in [`docs/INSTALL.md`](docs/INSTALL.md).
+
+```bash
+cargo build --workspace --release --locked
 ```
 
-The detailed architecture is documented in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
+Developer verification:
 
-## Status
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked
+cargo build --workspace --release --locked
+python3 scripts/secret-scan.py
+```
 
-Implementation has started milestone-by-milestone. M1 adds the Rust capture foundation: explicit PipeWire target selection, bounded in-memory audio frames, deterministic replay tests, cancellation, signal-driven shutdown, and observable source loss. Later transcription, meeting-state, reasoning, MCP, and overlay milestones are not implemented yet.
+## Run
 
-See [`docs/M1_PIPEWIRE_CAPTURE.md`](./docs/M1_PIPEWIRE_CAPTURE.md) for the exact capture and runtime-verification contract.
+First inspect PipeWire and choose the exact object you intend to capture:
 
-## Contributing
+```bash
+wpctl status
+wpctl inspect <ID>
+```
 
-See [`CONTRIBUTING.md`](./CONTRIBUTING.md) before opening a pull request. Security-sensitive reports should follow [`SECURITY.md`](./SECURITY.md).
+Capture-only diagnostic path:
 
-## License
+```bash
+cargo run --locked -p parliant-daemon -- capture --target '<NODE_NAME_OR_OBJECT_SERIAL>'
+```
 
-No open-source license has been granted yet. The repository is publicly viewable, but the code and documentation remain all-rights-reserved until a license is chosen.
+Complete V1 meeting pipeline:
+
+```bash
+export OPENAI_API_KEY='...'
+cargo run --locked -p parliant-daemon -- meet \
+  --target '<NODE_NAME_OR_OBJECT_SERIAL>' \
+  --answer-model '<RESPONSES_API_MODEL>'
+```
+
+For a selected sink's playback monitor, add `--sink-monitor`.
+
+In another terminal, launch the private overlay:
+
+```bash
+cargo run --locked -p parliant-overlay
+```
+
+The remote MCP bridge is opt-in. See [`docs/REMOTE_MCP.md`](docs/REMOTE_MCP.md) before enabling it.
+
+## Verification status
+
+The repository CI verifies formatting, warnings-denied Clippy, deterministic workspace tests, secret scanning, and a release build from the committed dependency lockfile. Hardware-, compositor-, and credential-dependent smoke tests remain separate runtime evidence and must not be inferred from CI. See [`docs/INSTALL.md`](docs/INSTALL.md) for the exact live verification procedures.
+
+## Privacy
+
+See [`docs/PRIVACY.md`](docs/PRIVACY.md). The short version: V1 has no raw-audio persistence path, no default transcript persistence path, metadata-only daemon diagnostics, a same-UID local overlay socket, and an optional authenticated read-only remote MCP boundary that remains disabled unless explicitly enabled.

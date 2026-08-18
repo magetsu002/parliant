@@ -1,7 +1,7 @@
 //! M1 audio capture boundary: explicit targets, bounded in-memory delivery, cancellation,
 //! deterministic replay, and the Linux PipeWire backend.
 
-use sidecar_core::AudioFrame;
+use parliant_core::AudioFrame;
 use std::io;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc};
@@ -75,7 +75,7 @@ pub enum StopReason {
 pub enum CaptureEvent {
     Starting { target: CaptureTarget },
     Connecting,
-    FormatNegotiated(sidecar_core::AudioFormat),
+    FormatNegotiated(parliant_core::AudioFormat),
     Streaming,
     SourceLost,
     Error(String),
@@ -245,7 +245,7 @@ pub fn run_pipewire_capture(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sidecar_core::{AudioFormat, MonotonicTimestamp, SampleFormat};
+    use parliant_core::{AudioFormat, MonotonicTimestamp, SampleFormat};
 
     fn frame(sequence: u64) -> AudioFrame {
         AudioFrame::new(

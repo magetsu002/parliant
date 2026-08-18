@@ -1,0 +1,12 @@
+[package]
+name = "parliant-context"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+parliant-core.workspace = true
+parliant-transcribe.workspace = true
+serde.workspace = true
+thiserror.workspace = true
