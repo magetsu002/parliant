@@ -4,6 +4,7 @@ members = [
     "crates/sidecar-audio",
     "crates/sidecar-transcribe",
     "crates/sidecar-context",
+    "crates/sidecar-detect",
     "crates/sidecar-daemon",
 ]
 resolver = "2"
@@ -19,6 +20,7 @@ sidecar-core = { path = "crates/sidecar-core" }
 sidecar-audio = { path = "crates/sidecar-audio" }
 sidecar-transcribe = { path = "crates/sidecar-transcribe" }
 sidecar-context = { path = "crates/sidecar-context" }
+sidecar-detect = { path = "crates/sidecar-detect" }
 thiserror = "2.0"
 signal-hook = "0.3.18"
 clap = { version = "4.5", features = ["derive"] }

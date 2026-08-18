@@ -1,0 +1,10 @@
+[package]
+name = "sidecar-detect"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+sidecar-context.workspace = true
+serde.workspace = true
