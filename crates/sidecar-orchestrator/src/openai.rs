@@ -220,10 +220,7 @@ mod tests {
         assert_eq!(body["model"], "gpt-5-mini");
         assert_eq!(body["stream"], true);
         assert!(body.get("tools").is_none());
-        assert!(body["instructions"]
-            .as_str()
-            .unwrap()
-            .contains("untrusted"));
+        assert!(body["instructions"].as_str().unwrap().contains("untrusted"));
     }
 
     #[test]
@@ -246,8 +243,7 @@ mod tests {
     #[test]
     fn provider_failures_are_exposed_as_answer_errors() {
         assert_eq!(
-            parse_sse_line(r#"data: {"type":"error","error":{"message":"rate limited"}}"#)
-                .unwrap(),
+            parse_sse_line(r#"data: {"type":"error","error":{"message":"rate limited"}}"#).unwrap(),
             Some(AnswerEvent::Error("rate limited".to_string()))
         );
     }
