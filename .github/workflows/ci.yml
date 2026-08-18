@@ -14,6 +14,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: feat/m8-remote-mcp-bridge
       - name: Install native development headers
         run: |
           sudo apt-get update
@@ -23,7 +25,7 @@ jobs:
           rustup toolchain install stable --profile minimal --component rustfmt --component clippy
           rustup default stable
       - name: Apply and commit HTTP parser ownership repair
-        if: github.event_name == 'push'
+        if: github.event_name == 'pull_request'
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -36,16 +38,19 @@ jobs:
               .map_err(|_| HttpFailure::bad_request("HTTP headers must be UTF-8/ASCII"))?
               .to_owned();
           '''
-          if old not in text:
+          if old in text:
+              path.write_text(text.replace(old, new, 1))
+          elif '.map_err(|_| HttpFailure::bad_request("HTTP headers must be UTF-8/ASCII"))?\n        .to_owned();' not in text:
               raise SystemExit('expected parser block not found')
-          path.write_text(text.replace(old, new, 1))
           PY
           cargo fmt --all
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add crates/sidecar-remote-mcp/src/lib.rs
-          git commit -m 'fix(m8): own parsed HTTP headers before body reads'
-          git push origin HEAD:feat/m8-remote-mcp-bridge
+          if ! git diff --quiet -- crates/sidecar-remote-mcp/src/lib.rs; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add crates/sidecar-remote-mcp/src/lib.rs
+            git commit -m 'fix(m8): own parsed HTTP headers before body reads'
+            git push origin HEAD:feat/m8-remote-mcp-bridge
+          fi
       - name: Formatting
         run: cargo fmt --all -- --check
       - name: Clippy
