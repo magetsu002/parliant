@@ -16,33 +16,85 @@ use tokio_tungstenite::tungstenite::http::HeaderValue;
 use tokio_tungstenite::tungstenite::Message;
 
 const DEFAULT_ENDPOINT: &str = "wss://api.openai.com/v1/realtime";
-const DEFAULT_MODEL: &str = "gpt-4o-mini-transcribe";
+const DEFAULT_REALTIME_MODEL: &str = "gpt-realtime-2.1";
+const DEFAULT_TRANSCRIPTION_MODEL: &str = "gpt-live-transcribe";
 const AUDIO_QUEUE_CAPACITY: usize = 64;
+const TARGET_AUDIO_CHUNK_BYTES: usize = 4_800;
+const AUDIO_FLUSH_INTERVAL: Duration = Duration::from_millis(100);
+const SESSION_READY_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone)]
 pub struct OpenAiRealtimeConfig {
     pub api_key: String,
     pub endpoint: String,
-    pub model: String,
-    pub language: Option<String>,
+    pub realtime_model: String,
+    pub transcription_model: String,
+    pub languages: Vec<String>,
     pub max_reconnects: u32,
 }
 
 impl OpenAiRealtimeConfig {
     pub fn new(api_key: impl Into<String>) -> Result<Self, TranscriptionError> {
-        let api_key = api_key.into();
-        if api_key.trim().is_empty() {
+        let config = Self {
+            api_key: api_key.into(),
+            endpoint: DEFAULT_ENDPOINT.to_string(),
+            realtime_model: DEFAULT_REALTIME_MODEL.to_string(),
+            transcription_model: DEFAULT_TRANSCRIPTION_MODEL.to_string(),
+            languages: Vec::new(),
+            max_reconnects: 3,
+        };
+        config.validate()?;
+        Ok(config)
+    }
+
+    fn validate(&self) -> Result<(), TranscriptionError> {
+        if self.api_key.trim().is_empty() {
             return Err(TranscriptionError::Provider(
                 "OpenAI API key must not be empty".to_string(),
             ));
         }
-        Ok(Self {
-            api_key,
-            endpoint: DEFAULT_ENDPOINT.to_string(),
-            model: DEFAULT_MODEL.to_string(),
-            language: None,
-            max_reconnects: 3,
-        })
+        validate_model_id("Realtime session model", &self.realtime_model)?;
+        validate_model_id("transcription model", &self.transcription_model)?;
+        let endpoint = self.endpoint.trim();
+        if !endpoint.starts_with("wss://") {
+            return Err(TranscriptionError::Provider(
+                "OpenAI Realtime endpoint must use wss://".to_string(),
+            ));
+        }
+        if endpoint.contains('#') {
+            return Err(TranscriptionError::Provider(
+                "OpenAI Realtime endpoint must not contain a URL fragment".to_string(),
+            ));
+        }
+        if endpoint
+            .split_once('?')
+            .map(|(_, query)| {
+                query.split('&').any(|part| {
+                    part.split_once('=')
+                        .map(|(key, _)| key == "model")
+                        .unwrap_or(part == "model")
+                })
+            })
+            .unwrap_or(false)
+        {
+            return Err(TranscriptionError::Provider(
+                "OpenAI Realtime endpoint must not contain a model query; configure realtime_model separately"
+                    .to_string(),
+            ));
+        }
+        for language in &self.languages {
+            if language.trim().is_empty()
+                || !language
+                    .chars()
+                    .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+            {
+                return Err(TranscriptionError::Provider(
+                    "OpenAI transcription language codes must contain only letters, digits, or '-'"
+                        .to_string(),
+                ));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -59,6 +111,7 @@ impl OpenAiRealtimeProvider {
 
 impl TranscriptionProvider for OpenAiRealtimeProvider {
     fn connect(&self) -> Result<Box<dyn TranscriptionSession>, TranscriptionError> {
+        self.config.validate()?;
         let (audio_tx, audio_rx) = tokio::sync::mpsc::channel(AUDIO_QUEUE_CAPACITY);
         let (event_tx, event_rx) = mpsc::channel();
         let cancellation = CancellationToken::new();
@@ -122,8 +175,10 @@ async fn run_worker(
                     let _ = event_tx.send(TranscriptionEvent::Health(ProviderHealth::Stopped));
                     return;
                 }
+                let safe_message = safe_error_text(&error, &config.api_key);
+                eprintln!("parliant: transcription provider error: {safe_message}");
+                let _ = event_tx.send(TranscriptionEvent::Error(safe_message));
                 if attempt >= config.max_reconnects {
-                    let _ = event_tx.send(TranscriptionEvent::Error(error.to_string()));
                     let _ = event_tx.send(TranscriptionEvent::Health(ProviderHealth::Degraded(
                         "reconnect budget exhausted".to_string(),
                     )));
@@ -143,8 +198,9 @@ async fn run_connection(
     event_tx: &mpsc::Sender<TranscriptionEvent>,
     cancellation: &CancellationToken,
 ) -> Result<(), TranscriptionError> {
-    let mut request = config
-        .endpoint
+    config.validate()?;
+    let websocket_url = realtime_websocket_url(config)?;
+    let mut request = websocket_url
         .as_str()
         .into_client_request()
         .map_err(|error| {
@@ -166,17 +222,80 @@ async fn run_connection(
         .send(Message::Text(session_update(config).to_string().into()))
         .await
         .map_err(|error| TranscriptionError::Provider(format!("session update failed: {error}")))?;
+
+    tokio::time::timeout(SESSION_READY_TIMEOUT, async {
+        loop {
+            if cancellation.is_cancelled() {
+                return Err(TranscriptionError::SessionClosed);
+            }
+            let message = read.next().await.ok_or_else(|| {
+                TranscriptionError::Provider(
+                    "realtime connection closed before session confirmation".to_string(),
+                )
+            })?;
+            let message = message.map_err(|error| {
+                TranscriptionError::Provider(format!("realtime read failed: {error}"))
+            })?;
+            match message {
+                Message::Text(text) => {
+                    let value: Value = serde_json::from_str(text.as_str()).map_err(|error| {
+                        TranscriptionError::Protocol(format!("invalid provider JSON: {error}"))
+                    })?;
+                    match value.get("type").and_then(Value::as_str) {
+                        Some("session.updated") => return Ok(()),
+                        Some("error") | Some("conversation.item.input_audio_transcription.failed") => {
+                            return Err(TranscriptionError::Provider(provider_error_message(&value)))
+                        }
+                        _ => {}
+                    }
+                }
+                Message::Close(_) => {
+                    return Err(TranscriptionError::Provider(
+                        "realtime server closed before session confirmation".to_string(),
+                    ));
+                }
+                Message::Ping(payload) => {
+                    write.send(Message::Pong(payload)).await.map_err(|error| {
+                        TranscriptionError::Provider(format!("pong failed: {error}"))
+                    })?;
+                }
+                Message::Binary(_) | Message::Pong(_) | Message::Frame(_) => {}
+            }
+        }
+    })
+    .await
+    .map_err(|_| {
+        TranscriptionError::Provider(
+            "timed out waiting for OpenAI Realtime session.updated after transcription session.update"
+                .to_string(),
+        )
+    })??;
+
+    eprintln!("parliant: transcription session accepted");
     let _ = event_tx.send(TranscriptionEvent::Health(ProviderHealth::Healthy));
 
     let mut latest_audio = MonotonicTimestamp::ZERO;
     let mut last_final_end = MonotonicTimestamp::ZERO;
-    let mut tick = tokio::time::interval(Duration::from_millis(25));
+    let mut pending_pcm = Vec::with_capacity(TARGET_AUDIO_CHUNK_BYTES);
+    let mut cancellation_tick = tokio::time::interval(Duration::from_millis(25));
+    let mut flush_tick = tokio::time::interval(AUDIO_FLUSH_INTERVAL);
+    flush_tick.tick().await;
     loop {
         tokio::select! {
-            _ = tick.tick() => {
+            _ = cancellation_tick.tick() => {
                 if cancellation.is_cancelled() {
                     let _ = write.close().await;
                     return Ok(());
+                }
+            }
+            _ = flush_tick.tick() => {
+                if !pending_pcm.is_empty() {
+                    let pcm = std::mem::take(&mut pending_pcm);
+                    let payload = audio_append_payload(&pcm);
+                    write
+                        .send(Message::Text(payload.to_string().into()))
+                        .await
+                        .map_err(|error| TranscriptionError::Provider(format!("audio send failed: {error}")))?;
                 }
             }
             frame = audio_rx.recv() => {
@@ -185,18 +304,16 @@ async fn run_connection(
                     return Ok(());
                 };
                 latest_audio = frame.timestamp;
-                let pcm = f32le_to_pcm16_mono_24khz(&frame)?;
-                if pcm.is_empty() {
-                    continue;
+                pending_pcm.extend_from_slice(&f32le_to_pcm16_mono_24khz(&frame)?);
+                while pending_pcm.len() >= TARGET_AUDIO_CHUNK_BYTES {
+                    let remainder = pending_pcm.split_off(TARGET_AUDIO_CHUNK_BYTES);
+                    let pcm = std::mem::replace(&mut pending_pcm, remainder);
+                    let payload = audio_append_payload(&pcm);
+                    write
+                        .send(Message::Text(payload.to_string().into()))
+                        .await
+                        .map_err(|error| TranscriptionError::Provider(format!("audio send failed: {error}")))?;
                 }
-                let payload = json!({
-                    "type": "input_audio_buffer.append",
-                    "audio": BASE64_STANDARD.encode(pcm),
-                });
-                write
-                    .send(Message::Text(payload.to_string().into()))
-                    .await
-                    .map_err(|error| TranscriptionError::Provider(format!("audio send failed: {error}")))?;
             }
             message = read.next() => {
                 let Some(message) = message else {
@@ -211,10 +328,19 @@ async fn run_connection(
                             last_final_end,
                             latest_audio,
                         )? {
-                            if let TranscriptionEvent::Final(segment) = &event {
-                                last_final_end = segment.end;
+                            match event {
+                                TranscriptionEvent::Error(message) => {
+                                    return Err(TranscriptionError::Provider(message));
+                                }
+                                TranscriptionEvent::Final(segment) => {
+                                    last_final_end = segment.end;
+                                    eprintln!("parliant: transcript final: {:?}", segment.text.as_str());
+                                    let _ = event_tx.send(TranscriptionEvent::Final(segment));
+                                }
+                                other => {
+                                    let _ = event_tx.send(other);
+                                }
                             }
-                            let _ = event_tx.send(event);
                         }
                     }
                     Message::Close(_) => {
@@ -233,11 +359,48 @@ async fn run_connection(
     }
 }
 
-fn session_update(config: &OpenAiRealtimeConfig) -> Value {
-    let mut transcription = json!({ "model": config.model });
-    if let Some(language) = &config.language {
-        transcription["language"] = Value::String(language.clone());
+fn validate_model_id(label: &str, model: &str) -> Result<(), TranscriptionError> {
+    if model.trim().is_empty() {
+        return Err(TranscriptionError::Provider(format!(
+            "OpenAI {label} must not be empty"
+        )));
     }
+    if !model
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | ':'))
+    {
+        return Err(TranscriptionError::Provider(format!(
+            "OpenAI {label} contains invalid characters"
+        )));
+    }
+    Ok(())
+}
+
+fn realtime_websocket_url(config: &OpenAiRealtimeConfig) -> Result<String, TranscriptionError> {
+    config.validate()?;
+    let endpoint = config.endpoint.trim();
+    let separator = if endpoint.contains('?') { '&' } else { '?' };
+    Ok(format!(
+        "{endpoint}{separator}model={}",
+        config.realtime_model
+    ))
+}
+
+fn session_update(config: &OpenAiRealtimeConfig) -> Value {
+    let mut transcription = json!({ "model": config.transcription_model });
+    if !config.languages.is_empty() {
+        transcription["languages"] = json!(config.languages);
+    }
+    let turn_detection = if config.transcription_model == "gpt-realtime-whisper" {
+        Value::Null
+    } else {
+        json!({
+            "type": "server_vad",
+            "threshold": 0.5,
+            "prefix_padding_ms": 300,
+            "silence_duration_ms": 500
+        })
+    };
     json!({
         "type": "session.update",
         "session": {
@@ -246,10 +409,17 @@ fn session_update(config: &OpenAiRealtimeConfig) -> Value {
                 "input": {
                     "format": { "type": "audio/pcm", "rate": 24000 },
                     "transcription": transcription,
-                    "turn_detection": { "type": "server_vad" }
+                    "turn_detection": turn_detection
                 }
             }
         }
+    })
+}
+
+fn audio_append_payload(pcm: &[u8]) -> Value {
+    json!({
+        "type": "input_audio_buffer.append",
+        "audio": BASE64_STANDARD.encode(pcm),
     })
 }
 
@@ -298,22 +468,65 @@ fn parse_server_event(
                 TranscriptSegment::new(id, transcript, start, end, parse_speaker(&value))?;
             Ok(Some(TranscriptionEvent::Final(segment)))
         }
-        "conversation.item.input_audio_transcription.failed" | "error" => {
-            let message = value
-                .pointer("/error/message")
-                .and_then(Value::as_str)
-                .or_else(|| value.get("message").and_then(Value::as_str))
-                .unwrap_or("unknown transcription provider error");
-            Ok(Some(TranscriptionEvent::Error(message.to_string())))
-        }
-        "session.created"
-        | "session.updated"
-        | "transcription_session.created"
-        | "transcription_session.updated" => {
+        "conversation.item.input_audio_transcription.failed" | "error" => Ok(Some(
+            TranscriptionEvent::Error(provider_error_message(&value)),
+        )),
+        "session.created" | "session.updated" => {
             Ok(Some(TranscriptionEvent::Health(ProviderHealth::Healthy)))
         }
         _ => Ok(None),
     }
+}
+
+fn provider_error_message(value: &Value) -> String {
+    value
+        .pointer("/error/message")
+        .and_then(Value::as_str)
+        .or_else(|| value.get("message").and_then(Value::as_str))
+        .unwrap_or("unknown transcription provider error")
+        .to_string()
+}
+
+fn safe_error_text(error: &TranscriptionError, api_key: &str) -> String {
+    let message = match error {
+        TranscriptionError::Provider(message) | TranscriptionError::Protocol(message) => {
+            message.clone()
+        }
+        other => other.to_string(),
+    };
+    redact_credentials(&message, api_key)
+}
+
+fn redact_credentials(message: &str, api_key: &str) -> String {
+    let api_redacted = if api_key.is_empty() {
+        message.to_string()
+    } else {
+        message.replace(api_key, "[REDACTED]")
+    };
+    let mut output = String::with_capacity(api_redacted.len());
+    let mut rest = api_redacted.as_str();
+
+    loop {
+        let lowercase = rest.to_ascii_lowercase();
+        let Some(marker) = lowercase.find("bearer ") else {
+            output.push_str(rest);
+            break;
+        };
+        let token_start = marker + "bearer ".len();
+        output.push_str(&rest[..token_start]);
+        let token_end = rest[token_start..]
+            .find(|ch: char| ch.is_ascii_whitespace() || matches!(ch, '"' | '\'' | ',' | ';'))
+            .map(|offset| token_start + offset)
+            .unwrap_or(rest.len());
+        if token_start == token_end {
+            output.push_str(&rest[marker..]);
+            break;
+        }
+        output.push_str("[REDACTED]");
+        rest = &rest[token_end..];
+    }
+
+    output
 }
 
 fn required_string(value: &Value, key: &str) -> Result<String, TranscriptionError> {
@@ -348,21 +561,77 @@ mod tests {
     use super::*;
 
     #[test]
-    fn session_update_uses_transcription_mode_and_pcm24k() {
+    fn websocket_url_includes_realtime_model_and_keeps_models_separate() {
+        let config = OpenAiRealtimeConfig::new("test-key").unwrap();
+        assert_eq!(
+            realtime_websocket_url(&config).unwrap(),
+            "wss://api.openai.com/v1/realtime?model=gpt-realtime-2.1"
+        );
+        assert_eq!(config.realtime_model, DEFAULT_REALTIME_MODEL);
+        assert_eq!(config.transcription_model, DEFAULT_TRANSCRIPTION_MODEL);
+        assert_ne!(config.realtime_model, config.transcription_model);
+    }
+
+    #[test]
+    fn websocket_query_construction_is_safe_and_deterministic() {
+        let mut config = OpenAiRealtimeConfig::new("test-key").unwrap();
+        config.endpoint = "wss://api.openai.com/v1/realtime?trace=1".to_string();
+        assert_eq!(
+            realtime_websocket_url(&config).unwrap(),
+            "wss://api.openai.com/v1/realtime?trace=1&model=gpt-realtime-2.1"
+        );
+        config.realtime_model = "gpt-realtime-2.1&leak=1".to_string();
+        assert!(realtime_websocket_url(&config).is_err());
+    }
+
+    #[test]
+    fn session_update_uses_current_transcription_mode_pcm24k_and_server_vad() {
         let config = OpenAiRealtimeConfig::new("test-key").unwrap();
         let value = session_update(&config);
+        assert_eq!(value["type"], "session.update");
         assert_eq!(value["session"]["type"], "transcription");
+        assert_eq!(
+            value["session"]["audio"]["input"]["format"]["type"],
+            "audio/pcm"
+        );
         assert_eq!(value["session"]["audio"]["input"]["format"]["rate"], 24_000);
         assert_eq!(
             value["session"]["audio"]["input"]["transcription"]["model"],
-            DEFAULT_MODEL
+            DEFAULT_TRANSCRIPTION_MODEL
         );
+        assert_eq!(
+            value["session"]["audio"]["input"]["turn_detection"],
+            json!({
+                "type": "server_vad",
+                "threshold": 0.5,
+                "prefix_padding_ms": 300,
+                "silence_duration_ms": 500
+            })
+        );
+    }
+
+    #[test]
+    fn live_transcription_languages_use_current_plural_field() {
+        let mut config = OpenAiRealtimeConfig::new("test-key").unwrap();
+        config.languages = vec!["en".to_string(), "fr".to_string()];
+        let value = session_update(&config);
+        let transcription = &value["session"]["audio"]["input"]["transcription"];
+        assert_eq!(transcription["languages"], json!(["en", "fr"]));
+        assert!(transcription.get("language").is_none());
+    }
+
+    #[test]
+    fn realtime_whisper_disables_vad_as_required() {
+        let mut config = OpenAiRealtimeConfig::new("test-key").unwrap();
+        config.transcription_model = "gpt-realtime-whisper".to_string();
+        let value = session_update(&config);
+        assert!(value["session"]["audio"]["input"]["turn_detection"].is_null());
     }
 
     #[test]
     fn parses_partial_and_final_events_without_provider_types_leaking() {
         let partial = parse_server_event(
-            r#"{"type":"conversation.item.input_audio_transcription.delta","item_id":"i1","delta":"hel"}"#,
+            r#"{"type":"conversation.item.input_audio_transcription.delta","item_id":"i1","content_index":0,"delta":"hel"}"#,
             MonotonicTimestamp::ZERO,
             MonotonicTimestamp::from_nanos(5),
         )
@@ -370,7 +639,7 @@ mod tests {
         assert!(matches!(partial, Some(TranscriptionEvent::Partial { text, .. }) if text == "hel"));
 
         let final_event = parse_server_event(
-            r#"{"type":"conversation.item.input_audio_transcription.completed","item_id":"i1","transcript":"hello"}"#,
+            r#"{"type":"conversation.item.input_audio_transcription.completed","item_id":"i1","content_index":0,"transcript":"hello"}"#,
             MonotonicTimestamp::from_nanos(2),
             MonotonicTimestamp::from_nanos(8),
         )
@@ -381,16 +650,63 @@ mod tests {
     }
 
     #[test]
-    fn provider_errors_remain_observable() {
-        let event = parse_server_event(
+    fn provider_errors_and_session_health_remain_observable() {
+        let error = parse_server_event(
             r#"{"type":"error","error":{"message":"bad audio"}}"#,
             MonotonicTimestamp::ZERO,
             MonotonicTimestamp::ZERO,
         )
         .unwrap();
         assert_eq!(
-            event,
+            error,
             Some(TranscriptionEvent::Error("bad audio".to_string()))
+        );
+
+        let ready = parse_server_event(
+            r#"{"type":"session.updated","session":{"type":"transcription"}}"#,
+            MonotonicTimestamp::ZERO,
+            MonotonicTimestamp::ZERO,
+        )
+        .unwrap();
+        assert_eq!(
+            ready,
+            Some(TranscriptionEvent::Health(ProviderHealth::Healthy))
+        );
+    }
+
+    #[test]
+    fn empty_or_invalid_models_fail_before_connecting() {
+        let mut config = OpenAiRealtimeConfig::new("test-key").unwrap();
+        config.realtime_model = " ".to_string();
+        assert!(OpenAiRealtimeProvider::new(config).connect().is_err());
+
+        let mut config = OpenAiRealtimeConfig::new("test-key").unwrap();
+        config.transcription_model = "bad?model".to_string();
+        assert!(OpenAiRealtimeProvider::new(config).connect().is_err());
+    }
+
+    #[test]
+    fn provider_error_sanitization_removes_all_credentials() {
+        let api_key = "unit-test-api-key";
+        let error = TranscriptionError::Provider(format!(
+            "request rejected; Authorization: Bearer {api_key}; mirror Bearer second-unit-token; provider said no"
+        ));
+        let safe = safe_error_text(&error, api_key);
+        assert!(!safe.contains(api_key));
+        assert!(!safe.contains("second-unit-token"));
+        assert!(safe.contains("provider said no"));
+    }
+
+    #[test]
+    fn audio_append_payload_is_bounded_to_the_chunk_supplied() {
+        let pcm = vec![0_u8; TARGET_AUDIO_CHUNK_BYTES];
+        let value = audio_append_payload(&pcm);
+        assert_eq!(value["type"], "input_audio_buffer.append");
+        assert_eq!(
+            BASE64_STANDARD
+                .decode(value["audio"].as_str().unwrap())
+                .unwrap(),
+            pcm
         );
     }
 }
