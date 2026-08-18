@@ -1,0 +1,9 @@
+[package]
+name = "sidecar-core"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+path = "src/lib.rs"

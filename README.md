@@ -35,11 +35,13 @@ meeting audio -> PipeWire -> transcription -> transcript store
                                private overlay
 ```
 
-The detailed pre-implementation architecture is documented in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
+The detailed architecture is documented in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
 ## Status
 
-SIDECAR is currently **pre-implementation**. The architecture and repository boundaries are being fixed before product code is added.
+Implementation has started milestone-by-milestone. M1 adds the Rust capture foundation: explicit PipeWire target selection, bounded in-memory audio frames, deterministic replay tests, cancellation, signal-driven shutdown, and observable source loss. Later transcription, meeting-state, reasoning, MCP, and overlay milestones are not implemented yet.
+
+See [`docs/M1_PIPEWIRE_CAPTURE.md`](./docs/M1_PIPEWIRE_CAPTURE.md) for the exact capture and runtime-verification contract.
 
 ## Contributing
 
