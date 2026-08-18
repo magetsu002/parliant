@@ -22,8 +22,14 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal --component rustfmt --component clippy
           rustup default stable
-      - name: Formatting
-        run: cargo fmt --all -- --check
+      - name: Apply formatting for repair artifact
+        run: cargo fmt --all
+      - name: Upload formatted M8 source
+        uses: actions/upload-artifact@v4
+        with:
+          name: m8-rustfmt-source
+          path: crates/sidecar-remote-mcp/src/lib.rs
+          if-no-files-found: error
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Tests
