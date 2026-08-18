@@ -185,20 +185,12 @@ fn build_input(
     let mut output = String::new();
     push_bounded(&mut output, "QUESTION\n", max_chars);
     push_bounded(&mut output, &question.text, max_chars);
-    push_bounded(
-        &mut output,
-        "\n\nRECENT FINALIZED TRANSCRIPT\n",
-        max_chars,
-    );
+    push_bounded(&mut output, "\n\nRECENT FINALIZED TRANSCRIPT\n", max_chars);
     for segment in recent {
         push_segment(&mut output, segment, max_chars);
     }
     if !earlier.is_empty() {
-        push_bounded(
-            &mut output,
-            "\nRELEVANT EARLIER TRANSCRIPT\n",
-            max_chars,
-        );
+        push_bounded(&mut output, "\nRELEVANT EARLIER TRANSCRIPT\n", max_chars);
         for segment in earlier {
             push_segment(&mut output, segment, max_chars);
         }
@@ -217,11 +209,7 @@ fn build_input(
 }
 
 fn push_segment(output: &mut String, segment: &MeetingSegment, max_chars: usize) {
-    push_bounded(
-        output,
-        &format!("[segment {}] ", segment.id.0),
-        max_chars,
-    );
+    push_bounded(output, &format!("[segment {}] ", segment.id.0), max_chars);
     if let Some(speaker) = &segment.speaker {
         let label = speaker.label.as_deref().unwrap_or(&speaker.id);
         push_bounded(output, label, max_chars);
@@ -289,10 +277,7 @@ impl<P: AnswerProvider> AnswerCoordinator<P> {
     }
 
     pub fn begin(&self, request: AnswerRequest) -> Result<(), AnswerError> {
-        let mut active = self
-            .active
-            .lock()
-            .map_err(|_| AnswerError::SessionClosed)?;
+        let mut active = self.active.lock().map_err(|_| AnswerError::SessionClosed)?;
         if let Some(previous) = active.take() {
             previous.session.cancel();
         }
@@ -307,10 +292,7 @@ impl<P: AnswerProvider> AnswerCoordinator<P> {
     }
 
     pub fn poll(&self, timeout: Duration) -> Result<Option<AnswerUpdate>, AnswerError> {
-        let mut active = self
-            .active
-            .lock()
-            .map_err(|_| AnswerError::SessionClosed)?;
+        let mut active = self.active.lock().map_err(|_| AnswerError::SessionClosed)?;
         let Some(current) = active.as_ref() else {
             return Ok(None);
         };
