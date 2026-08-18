@@ -1,0 +1,12 @@
+[package]
+name = "sidecar-context"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+sidecar-core.workspace = true
+sidecar-transcribe.workspace = true
+serde.workspace = true
+thiserror.workspace = true
