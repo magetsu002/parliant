@@ -1,5 +1,7 @@
 # Parliant
 
+*Intelligence beside you.*
+
 Parliant is a Linux-first local meeting intelligence daemon. V1 captures an explicitly selected PipeWire source or sink monitor, transcribes audio through a provider boundary, keeps bounded finalized meeting text in memory, detects likely questions, generates private answer suggestions, exposes bounded read-only meeting context through MCP, and renders suggestions in a private Wayland overlay.
 
 ## V1 architecture
