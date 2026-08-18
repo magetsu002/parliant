@@ -255,7 +255,7 @@ pub(crate) fn f32le_to_pcm16_mono_24khz(frame: &AudioFrame) -> Result<Vec<u8>, T
     let bytes_per_interleaved_frame = channels
         .checked_mul(std::mem::size_of::<f32>())
         .ok_or_else(|| TranscriptionError::Provider("audio frame width overflow".to_string()))?;
-    if frame.data.len() % bytes_per_interleaved_frame != 0 {
+    if !frame.data.len().is_multiple_of(bytes_per_interleaved_frame) {
         return Err(TranscriptionError::Provider(
             "audio payload is not aligned to its declared format".to_string(),
         ));
