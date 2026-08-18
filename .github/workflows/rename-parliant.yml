@@ -4,18 +4,22 @@ on:
   push:
     branches:
       - chore/rename-parliant
+  pull_request:
+    branches:
+      - feat/m9-v1-hardening
 
 permissions:
   contents: write
 
 jobs:
   rename:
-    if: ${{ !contains(github.event.head_commit.message, 'chore: rename project to Parliant') }}
+    if: ${{ github.event_name == 'pull_request' || !contains(github.event.head_commit.message, 'chore: rename project to Parliant') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: chore/rename-parliant
           fetch-depth: 0
 
       - name: Rename project tree
