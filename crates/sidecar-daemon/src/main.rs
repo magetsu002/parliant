@@ -73,11 +73,30 @@ fn run_capture(target: String, sink_monitor: bool, buffer_frames: usize) -> Exit
     let consumer = thread::spawn(move || {
         let mut frames = 0_u64;
         let mut bytes = 0_u64;
+        let mut first_timestamp_ns = None;
+        let mut last_timestamp_ns = None;
+        let mut timestamps_monotonic = true;
+
         while let Ok(frame) = frame_rx.recv() {
+            let timestamp_ns = frame.timestamp.nanos_since_start;
+            if first_timestamp_ns.is_none() {
+                first_timestamp_ns = Some(timestamp_ns);
+            }
+            if let Some(previous_timestamp_ns) = last_timestamp_ns {
+                timestamps_monotonic &= timestamp_ns >= previous_timestamp_ns;
+            }
+            last_timestamp_ns = Some(timestamp_ns);
             frames = frames.saturating_add(1);
             bytes = bytes.saturating_add(frame.data.len() as u64);
         }
-        (frames, bytes)
+
+        (
+            frames,
+            bytes,
+            first_timestamp_ns,
+            last_timestamp_ns,
+            timestamps_monotonic,
+        )
     });
 
     let (event_tx, event_rx) = mpsc::channel();
@@ -91,11 +110,21 @@ fn run_capture(target: String, sink_monitor: bool, buffer_frames: usize) -> Exit
 
     let stats = stats_probe.stats();
     drop(stats_probe);
-    let (consumed_frames, consumed_bytes) = consumer.join().unwrap_or((0, 0));
+    let (
+        consumed_frames,
+        consumed_bytes,
+        first_timestamp_ns,
+        last_timestamp_ns,
+        timestamps_monotonic,
+    ) = consumer.join().unwrap_or((0, 0, None, None, false));
     let _ = event_printer.join();
+    let timestamps_advanced = matches!(
+        (first_timestamp_ns, last_timestamp_ns),
+        (Some(first), Some(last)) if last > first
+    );
 
     eprintln!(
-        "sidecar: capture summary accepted={} dropped_full={} consumed_frames={} consumed_bytes={}",
+        "sidecar: capture summary accepted={} dropped_full={} consumed_frames={} consumed_bytes={} first_timestamp_ns={first_timestamp_ns:?} last_timestamp_ns={last_timestamp_ns:?} timestamps_monotonic={timestamps_monotonic} timestamps_advanced={timestamps_advanced}",
         stats.accepted, stats.dropped_full, consumed_frames, consumed_bytes
     );
 
