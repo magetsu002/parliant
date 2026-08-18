@@ -31,17 +31,12 @@ jobs:
           from pathlib import Path
           path = Path('crates/sidecar-remote-mcp/src/lib.rs')
           text = path.read_text()
-          old = '''    let header_text = std::str::from_utf8(&buffer[..header_end - 4])
-              .map_err(|_| HttpFailure::bad_request("HTTP headers must be UTF-8/ASCII"))?;
-          '''
-          new = '''    let header_text = std::str::from_utf8(&buffer[..header_end - 4])
-              .map_err(|_| HttpFailure::bad_request("HTTP headers must be UTF-8/ASCII"))?
-              .to_owned();
-          '''
-          if old in text:
-              path.write_text(text.replace(old, new, 1))
-          elif '.map_err(|_| HttpFailure::bad_request("HTTP headers must be UTF-8/ASCII"))?\n        .to_owned();' not in text:
-              raise SystemExit('expected parser block not found')
+          needle = '.map_err(|_| HttpFailure::bad_request("HTTP headers must be UTF-8/ASCII"))?;'
+          replacement = '.map_err(|_| HttpFailure::bad_request("HTTP headers must be UTF-8/ASCII"))?\n        .to_owned();'
+          if needle in text:
+              path.write_text(text.replace(needle, replacement, 1))
+          elif replacement not in text:
+              raise SystemExit('expected parser conversion not found')
           PY
           cargo fmt --all
           if ! git diff --quiet -- crates/sidecar-remote-mcp/src/lib.rs; then
