@@ -7,7 +7,9 @@ members = [
     "crates/sidecar-detect",
     "crates/sidecar-mcp",
     "crates/sidecar-orchestrator",
+    "crates/sidecar-ipc",
     "crates/sidecar-daemon",
+    "apps/sidecar-overlay",
 ]
 resolver = "2"
 
@@ -25,6 +27,7 @@ sidecar-context = { path = "crates/sidecar-context" }
 sidecar-detect = { path = "crates/sidecar-detect" }
 sidecar-mcp = { path = "crates/sidecar-mcp" }
 sidecar-orchestrator = { path = "crates/sidecar-orchestrator" }
+sidecar-ipc = { path = "crates/sidecar-ipc" }
 thiserror = "2.0"
 signal-hook = "0.3.18"
 clap = { version = "4.5", features = ["derive"] }
@@ -36,3 +39,7 @@ futures-util = "0.3"
 tokio = { version = "1", features = ["rt-multi-thread", "time", "sync", "macros"] }
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+libc = "0.2"
+gtk = "0.18.2"
+gdk = "0.18.2"
+gtk-layer-shell = { version = "0.8.2", features = ["v0_6"] }
