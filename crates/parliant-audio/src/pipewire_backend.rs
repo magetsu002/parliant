@@ -19,6 +19,7 @@ struct UserData {
     format: Option<AudioFormat>,
     frames: BoundedFrameSender,
     events: mpsc::Sender<CaptureEvent>,
+    cancellation: CancellationToken,
     session_start: Instant,
     sequence: u64,
     saw_streaming: bool,
@@ -76,6 +77,7 @@ pub fn run_pipewire_capture(
         format: None,
         frames,
         events: events.clone(),
+        cancellation: cancellation.clone(),
         session_start: Instant::now(),
         sequence: 0,
         saw_streaming: false,
@@ -93,11 +95,15 @@ pub fn run_pipewire_capture(
                 let _ = user_data.events.send(CaptureEvent::Streaming);
             }
             pw::stream::StreamState::Error(message) => {
-                let _ = user_data.events.send(CaptureEvent::Error(message));
+                if !user_data.cancellation.is_cancelled() {
+                    let _ = user_data.events.send(CaptureEvent::Error(message));
+                }
                 state_loop.quit();
             }
             pw::stream::StreamState::Unconnected if user_data.saw_streaming => {
-                let _ = user_data.events.send(CaptureEvent::SourceLost);
+                if !user_data.cancellation.is_cancelled() {
+                    let _ = user_data.events.send(CaptureEvent::SourceLost);
+                }
                 state_loop.quit();
             }
             pw::stream::StreamState::Unconnected | pw::stream::StreamState::Paused => {}
@@ -166,9 +172,11 @@ pub fn run_pipewire_capture(
             );
 
             if let Err(error) = user_data.frames.try_send(frame) {
-                let _ = user_data
-                    .events
-                    .send(CaptureEvent::Error(error.to_string()));
+                if !user_data.cancellation.is_cancelled() {
+                    let _ = user_data
+                        .events
+                        .send(CaptureEvent::Error(error.to_string()));
+                }
             }
         })
         .register()
@@ -219,6 +227,7 @@ pub fn run_pipewire_capture(
 
     mainloop.run();
 
+    let cancellation_requested = cancellation.is_cancelled();
     let state_after_loop = stream.state();
     cancellation.cancel();
     let _ = watcher.join();
@@ -226,16 +235,30 @@ pub fn run_pipewire_capture(
         let _ = stream.disconnect();
     }
 
-    let reason = if matches!(state_after_loop, pw::stream::StreamState::Error(_)) {
-        StopReason::BackendError
-    } else if matches!(state_after_loop, pw::stream::StreamState::Unconnected) {
-        StopReason::SourceLost
-    } else {
-        StopReason::Cancelled
-    };
+    let reason = classify_stop_reason(
+        cancellation_requested,
+        matches!(state_after_loop, pw::stream::StreamState::Error(_)),
+        matches!(state_after_loop, pw::stream::StreamState::Unconnected),
+    );
 
     let _ = events.send(CaptureEvent::Stopped(reason));
     Ok(reason)
+}
+
+fn classify_stop_reason(
+    cancellation_requested: bool,
+    backend_error: bool,
+    unconnected: bool,
+) -> StopReason {
+    if cancellation_requested {
+        StopReason::Cancelled
+    } else if backend_error {
+        StopReason::BackendError
+    } else if unconnected {
+        StopReason::SourceLost
+    } else {
+        StopReason::Cancelled
+    }
 }
 
 fn copy_chunk(bytes: &[u8], offset: u32, size: u32) -> Vec<u8> {
@@ -258,7 +281,8 @@ fn copy_chunk(bytes: &[u8], offset: u32, size: u32) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use super::copy_chunk;
+    use super::{classify_stop_reason, copy_chunk};
+    use crate::StopReason;
 
     #[test]
     fn copy_chunk_honors_offset_and_size() {
@@ -269,5 +293,33 @@ mod tests {
     fn copy_chunk_clamps_size_and_handles_wrapped_offsets() {
         assert_eq!(copy_chunk(&[0, 1, 2, 3], 3, 4), vec![3, 0, 1, 2]);
         assert_eq!(copy_chunk(&[0, 1, 2, 3], 9, 2), vec![1, 2]);
+    }
+
+    #[test]
+    fn cooperative_cancellation_never_becomes_source_lost_or_backend_error() {
+        assert_eq!(
+            classify_stop_reason(true, false, true),
+            StopReason::Cancelled
+        );
+        assert_eq!(
+            classify_stop_reason(true, true, false),
+            StopReason::Cancelled
+        );
+    }
+
+    #[test]
+    fn genuine_source_loss_remains_source_lost() {
+        assert_eq!(
+            classify_stop_reason(false, false, true),
+            StopReason::SourceLost
+        );
+    }
+
+    #[test]
+    fn genuine_backend_error_remains_backend_error() {
+        assert_eq!(
+            classify_stop_reason(false, true, false),
+            StopReason::BackendError
+        );
     }
 }
