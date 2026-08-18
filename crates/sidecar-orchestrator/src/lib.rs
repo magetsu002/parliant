@@ -104,7 +104,7 @@ impl ContextAssembler {
         let recent_ids = recent
             .iter()
             .map(|segment| segment.id)
-            .collect::<HashSet<_>>();
+            .collect::<HashSet<SegmentId>>();
         let mut earlier = Vec::new();
         let mut earlier_ids = HashSet::new();
         for term in search_terms(&question.text) {
