@@ -1,7 +1,6 @@
 use crate::{
-    f32le_to_pcm16_mono_24khz, ChannelSession, ProviderHealth, SpeakerMetadata,
-    TranscriptSegment, TranscriptionError, TranscriptionEvent, TranscriptionProvider,
-    TranscriptionSession,
+    f32le_to_pcm16_mono_24khz, ChannelSession, ProviderHealth, SpeakerMetadata, TranscriptSegment,
+    TranscriptionError, TranscriptionEvent, TranscriptionProvider, TranscriptionSession,
 };
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
@@ -81,12 +80,7 @@ impl TranscriptionProvider for OpenAiRealtimeProvider {
                         return;
                     }
                 };
-                runtime.block_on(run_worker(
-                    config,
-                    audio_rx,
-                    event_tx,
-                    worker_cancellation,
-                ));
+                runtime.block_on(run_worker(config, audio_rx, event_tx, worker_cancellation));
             })
             .map_err(|error| {
                 TranscriptionError::Provider(format!("failed to spawn provider worker: {error}"))
@@ -118,14 +112,7 @@ async fn run_worker(
             ProviderHealth::Reconnecting { attempt }
         }));
 
-        match run_connection(
-            &config,
-            &mut audio_rx,
-            &event_tx,
-            &cancellation,
-        )
-        .await
-        {
+        match run_connection(&config, &mut audio_rx, &event_tx, &cancellation).await {
             Ok(()) => {
                 let _ = event_tx.send(TranscriptionEvent::Health(ProviderHealth::Stopped));
                 return;
@@ -160,14 +147,20 @@ async fn run_connection(
         .endpoint
         .as_str()
         .into_client_request()
-        .map_err(|error| TranscriptionError::Provider(format!("invalid realtime endpoint: {error}")))?;
-    let authorization = HeaderValue::from_str(&format!("Bearer {}", config.api_key))
-        .map_err(|error| TranscriptionError::Provider(format!("invalid authorization header: {error}")))?;
+        .map_err(|error| {
+            TranscriptionError::Provider(format!("invalid realtime endpoint: {error}"))
+        })?;
+    let authorization =
+        HeaderValue::from_str(&format!("Bearer {}", config.api_key)).map_err(|error| {
+            TranscriptionError::Provider(format!("invalid authorization header: {error}"))
+        })?;
     request.headers_mut().insert(AUTHORIZATION, authorization);
 
     let (websocket, _) = tokio_tungstenite::connect_async(request)
         .await
-        .map_err(|error| TranscriptionError::Provider(format!("realtime connect failed: {error}")))?;
+        .map_err(|error| {
+            TranscriptionError::Provider(format!("realtime connect failed: {error}"))
+        })?;
     let (mut write, mut read) = websocket.split();
     write
         .send(Message::Text(session_update(config).to_string().into()))
@@ -301,7 +294,8 @@ fn parse_server_event(
             if end < start {
                 end = start;
             }
-            let segment = TranscriptSegment::new(id, transcript, start, end, parse_speaker(&value))?;
+            let segment =
+                TranscriptSegment::new(id, transcript, start, end, parse_speaker(&value))?;
             Ok(Some(TranscriptionEvent::Final(segment)))
         }
         "conversation.item.input_audio_transcription.failed" | "error" => {
@@ -312,7 +306,10 @@ fn parse_server_event(
                 .unwrap_or("unknown transcription provider error");
             Ok(Some(TranscriptionEvent::Error(message.to_string())))
         }
-        "session.created" | "session.updated" | "transcription_session.created" | "transcription_session.updated" => {
+        "session.created"
+        | "session.updated"
+        | "transcription_session.created"
+        | "transcription_session.updated" => {
             Ok(Some(TranscriptionEvent::Health(ProviderHealth::Healthy)))
         }
         _ => Ok(None),
@@ -336,7 +333,10 @@ fn parse_speaker(value: &Value) -> Option<SpeakerMetadata> {
         }),
         Value::Object(map) => {
             let id = map.get("id")?.as_str()?.to_string();
-            let label = map.get("label").and_then(Value::as_str).map(ToOwned::to_owned);
+            let label = map
+                .get("label")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned);
             Some(SpeakerMetadata { id, label })
         }
         _ => None,
@@ -352,7 +352,10 @@ mod tests {
         let config = OpenAiRealtimeConfig::new("test-key").unwrap();
         let value = session_update(&config);
         assert_eq!(value["session"]["type"], "transcription");
-        assert_eq!(value["session"]["audio"]["input"]["format"]["rate"], 24_000);
+        assert_eq!(
+            value["session"]["audio"]["input"]["format"]["rate"],
+            24_000
+        );
         assert_eq!(
             value["session"]["audio"]["input"]["transcription"]["model"],
             DEFAULT_MODEL
@@ -375,7 +378,9 @@ mod tests {
             MonotonicTimestamp::from_nanos(8),
         )
         .unwrap();
-        assert!(matches!(final_event, Some(TranscriptionEvent::Final(segment)) if segment.text == "hello" && segment.start.nanos_since_start == 2 && segment.end.nanos_since_start == 8));
+        assert!(
+            matches!(final_event, Some(TranscriptionEvent::Final(segment)) if segment.text == "hello" && segment.start.nanos_since_start == 2 && segment.end.nanos_since_start == 8)
+        );
     }
 
     #[test]
@@ -386,6 +391,9 @@ mod tests {
             MonotonicTimestamp::ZERO,
         )
         .unwrap();
-        assert_eq!(event, Some(TranscriptionEvent::Error("bad audio".to_string())));
+        assert_eq!(
+            event,
+            Some(TranscriptionEvent::Error("bad audio".to_string()))
+        );
     }
 }
