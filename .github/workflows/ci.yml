@@ -6,16 +6,14 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   rust:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: feat/m9-v1-hardening
       - name: Install native development headers
         run: |
           sudo apt-get update
@@ -24,20 +22,13 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal --component rustfmt --component clippy
           rustup default stable
-      - name: Generate and commit dependency lockfile
-        if: github.event_name == 'pull_request'
-        run: |
-          cargo generate-lockfile
-          if ! git diff --quiet -- Cargo.lock || ! git ls-files --error-unmatch Cargo.lock >/dev/null 2>&1; then
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add Cargo.lock
-            git commit -m 'build(m9): lock V1 dependencies'
-            git push origin HEAD:feat/m9-v1-hardening
-          fi
       - name: Formatting
         run: cargo fmt --all -- --check
       - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Tests
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
+      - name: Secret scan
+        run: python3 scripts/secret-scan.py
+      - name: Release build
+        run: cargo build --workspace --release --locked
