@@ -73,7 +73,7 @@ cargo run --locked -p parliant-overlay
 
 The remote MCP bridge is opt-in. See [`docs/REMOTE_MCP.md`](docs/REMOTE_MCP.md) before enabling it.
 
-Local answer generation is optional. Omit `--answer-model` when ChatGPT or another MCP client should reason directly over the live meeting context; add `--answer-model <RESPONSES_API_MODEL>` only when you want Parliant's private overlay to stream local suggestions.
+Local answer generation is optional. Omit `--answer-model` when ChatGPT or another MCP client should reason directly over the live meeting context; in that mode Parliant makes no Responses API answer request. Add `--answer-model <RESPONSES_API_MODEL>` only when you want Parliant's private overlay to stream local suggestions.
 
 ## Verification status
 
