@@ -121,10 +121,7 @@ impl McpService {
                 json!({"segments": state.recent(limit).iter().map(segment_json).collect::<Vec<_>>()})
             }
             "meeting_search" => {
-                let query = arguments
-                    .get("query")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
+                let query = arguments.get("query").and_then(Value::as_str).unwrap_or("");
                 if query.trim().is_empty() {
                     return tool_error("query must not be empty");
                 }
@@ -382,10 +379,7 @@ mod tests {
             "tools/call",
             json!({"name":"meeting_get_segment","arguments":{"id":1}}),
         );
-        assert_eq!(
-            segment["result"]["structuredContent"]["segment"]["id"],
-            1
-        );
+        assert_eq!(segment["result"]["structuredContent"]["segment"]["id"], 1);
         let speakers = call(
             &service,
             "tools/call",
