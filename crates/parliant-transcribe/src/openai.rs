@@ -16,7 +16,7 @@ use tokio_tungstenite::tungstenite::http::HeaderValue;
 use tokio_tungstenite::tungstenite::Message;
 
 const DEFAULT_ENDPOINT: &str = "wss://api.openai.com/v1/realtime";
-const DEFAULT_MODEL: &str = "gpt-4o-mini-transcribe";
+const DEFAULT_MODEL: &str = "gpt-live-transcribe";
 const AUDIO_QUEUE_CAPACITY: usize = 64;
 
 #[derive(Debug, Clone)]
@@ -234,9 +234,16 @@ async fn run_connection(
 }
 
 fn session_update(config: &OpenAiRealtimeConfig) -> Value {
-    let mut transcription = json!({ "model": config.model });
+    let mut transcription = json!({
+        "model": config.model,
+        "delay": "low"
+    });
     if let Some(language) = &config.language {
-        transcription["language"] = Value::String(language.clone());
+        if config.model == "gpt-live-transcribe" {
+            transcription["languages"] = json!([language]);
+        } else {
+            transcription["language"] = Value::String(language.clone());
+        }
     }
     json!({
         "type": "session.update",

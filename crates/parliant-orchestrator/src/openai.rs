@@ -12,23 +12,25 @@ const DEFAULT_ENDPOINT: &str = "https://api.openai.com/v1/responses";
 #[derive(Debug, Clone)]
 pub struct OpenAiResponsesConfig {
     pub api_key: String,
-    pub model: String,
+    pub model: Option<String>,
     pub endpoint: String,
     pub timeout: Duration,
 }
 
 impl OpenAiResponsesConfig {
-    pub fn new(api_key: impl Into<String>, model: impl Into<String>) -> Result<Self, AnswerError> {
+    pub fn new(api_key: impl Into<String>, model: Option<String>) -> Result<Self, AnswerError> {
         let api_key = api_key.into();
-        let model = model.into();
         if api_key.trim().is_empty() {
             return Err(AnswerError::Provider(
                 "OpenAI API key must not be empty".to_string(),
             ));
         }
-        if model.trim().is_empty() {
+        if model
+            .as_deref()
+            .is_some_and(|model| model.trim().is_empty())
+        {
             return Err(AnswerError::Provider(
-                "OpenAI model must not be empty".to_string(),
+                "OpenAI model must not be empty when configured".to_string(),
             ));
         }
         Ok(Self {
@@ -53,6 +55,16 @@ impl OpenAiResponsesProvider {
 
 impl AnswerProvider for OpenAiResponsesProvider {
     fn start(&self, request: AnswerRequest) -> Result<Box<dyn AnswerSession>, AnswerError> {
+        if self.config.model.is_none() {
+            let (tx, rx) = mpsc::channel();
+            let cancelled = Arc::new(AtomicBool::new(false));
+            let _ = tx.send(AnswerEvent::Done);
+            drop(tx);
+            return Ok(Box::new(ChannelAnswerSession {
+                rx: Mutex::new(rx),
+                cancelled,
+            }));
+        }
         let (tx, rx) = mpsc::channel();
         let cancelled = Arc::new(AtomicBool::new(false));
         let worker_cancelled = Arc::clone(&cancelled);
@@ -155,7 +167,7 @@ fn send_if_active(tx: &mpsc::Sender<AnswerEvent>, cancelled: &AtomicBool, event:
 
 fn response_request_body(config: &OpenAiResponsesConfig, request: &AnswerRequest) -> Value {
     json!({
-        "model": config.model,
+        "model": config.model.as_deref().expect("local answer model is configured"),
         "instructions": request.instructions,
         "input": request.input,
         "stream": true
@@ -215,12 +227,24 @@ mod tests {
 
     #[test]
     fn request_uses_current_responses_shape_without_write_tools() {
-        let config = OpenAiResponsesConfig::new("test-key", "gpt-5-mini").unwrap();
+        let config =
+            OpenAiResponsesConfig::new("test-key", Some("gpt-5-mini".to_string())).unwrap();
         let body = response_request_body(&config, &request());
         assert_eq!(body["model"], "gpt-5-mini");
         assert_eq!(body["stream"], true);
         assert!(body.get("tools").is_none());
         assert!(body["instructions"].as_str().unwrap().contains("untrusted"));
+    }
+
+    #[test]
+    fn omitted_model_disables_local_answer_api_calls() {
+        let config = OpenAiResponsesConfig::new("test-key", None).unwrap();
+        let provider = OpenAiResponsesProvider::new(config);
+        let session = provider.start(request()).unwrap();
+        assert_eq!(
+            session.recv_timeout(Duration::ZERO).unwrap(),
+            Some(AnswerEvent::Done)
+        );
     }
 
     #[test]
