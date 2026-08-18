@@ -138,10 +138,7 @@ impl<A: AnswerProvider, C: SemanticClassifier> RuntimeEngine<A, C> {
         }
     }
 
-    pub fn poll_answer(
-        &mut self,
-        timeout: Duration,
-    ) -> Result<Option<DaemonEvent>, RuntimeError> {
+    pub fn poll_answer(&mut self, timeout: Duration) -> Result<Option<DaemonEvent>, RuntimeError> {
         let Some(update) = self.answers.poll(timeout)? else {
             return Ok(None);
         };

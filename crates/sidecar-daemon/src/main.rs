@@ -210,10 +210,7 @@ fn run_meeting(options: MeetingOptions) -> Result<ExitCode, String> {
             .map_err(|error| error.to_string())?;
         Some(Arc::new(server))
     };
-    publish(
-        overlay.as_deref(),
-        DaemonEvent::Listening { active: true },
-    );
+    publish(overlay.as_deref(), DaemonEvent::Listening { active: true });
     publish(
         overlay.as_deref(),
         DaemonEvent::Transcription {
@@ -222,8 +219,12 @@ fn run_meeting(options: MeetingOptions) -> Result<ExitCode, String> {
     );
 
     let remote_bridge = if options.remote_mcp {
-        let token = std::env::var(&options.remote_mcp_token_env)
-            .map_err(|_| format!("{} must be set when --remote-mcp is enabled", options.remote_mcp_token_env))?;
+        let token = std::env::var(&options.remote_mcp_token_env).map_err(|_| {
+            format!(
+                "{} must be set when --remote-mcp is enabled",
+                options.remote_mcp_token_env
+            )
+        })?;
         let mut config = RemoteBridgeConfig::enabled_loopback(options.remote_mcp_bind, token)
             .map_err(|error| error.to_string())?;
         for origin in options.remote_origin {
@@ -310,12 +311,8 @@ fn run_meeting(options: MeetingOptions) -> Result<ExitCode, String> {
         })
         .map_err(|error| format!("failed to start capture event observer: {error}"))?;
 
-    let capture_result = run_pipewire_capture(
-        target,
-        frame_tx,
-        capture_event_tx,
-        cancellation.clone(),
-    );
+    let capture_result =
+        run_pipewire_capture(target, frame_tx, capture_event_tx, cancellation.clone());
     cancellation.cancel();
 
     let pipeline_stats = pipeline
@@ -327,7 +324,10 @@ fn run_meeting(options: MeetingOptions) -> Result<ExitCode, String> {
         bridge.stop();
     }
     if let Some(server) = &overlay {
-        publish(Some(server.as_ref()), DaemonEvent::Listening { active: false });
+        publish(
+            Some(server.as_ref()),
+            DaemonEvent::Listening { active: false },
+        );
         server.stop();
     }
 
@@ -440,7 +440,8 @@ fn run_pipeline(
                 match server.recv_action_timeout(Duration::ZERO) {
                     Ok(Some(action)) => match action.action {
                         OverlayAction::Dismiss => {
-                            if let Some(event) = engine.handle_overlay_action(OverlayAction::Dismiss)
+                            if let Some(event) =
+                                engine.handle_overlay_action(OverlayAction::Dismiss)
                             {
                                 publish(Some(server), event);
                             }
