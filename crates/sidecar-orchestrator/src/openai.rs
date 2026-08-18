@@ -1,4 +1,6 @@
-use crate::{AnswerError, AnswerEvent, AnswerProvider, AnswerRequest, AnswerSession, ChannelAnswerSession};
+use crate::{
+    AnswerError, AnswerEvent, AnswerProvider, AnswerRequest, AnswerSession, ChannelAnswerSession,
+};
 use serde_json::{json, Value};
 use std::io::BufRead;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -16,17 +18,18 @@ pub struct OpenAiResponsesConfig {
 }
 
 impl OpenAiResponsesConfig {
-    pub fn new(
-        api_key: impl Into<String>,
-        model: impl Into<String>,
-    ) -> Result<Self, AnswerError> {
+    pub fn new(api_key: impl Into<String>, model: impl Into<String>) -> Result<Self, AnswerError> {
         let api_key = api_key.into();
         let model = model.into();
         if api_key.trim().is_empty() {
-            return Err(AnswerError::Provider("OpenAI API key must not be empty".to_string()));
+            return Err(AnswerError::Provider(
+                "OpenAI API key must not be empty".to_string(),
+            ));
         }
         if model.trim().is_empty() {
-            return Err(AnswerError::Provider("OpenAI model must not be empty".to_string()));
+            return Err(AnswerError::Provider(
+                "OpenAI model must not be empty".to_string(),
+            ));
         }
         Ok(Self {
             api_key,
@@ -57,7 +60,9 @@ impl AnswerProvider for OpenAiResponsesProvider {
         std::thread::Builder::new()
             .name("sidecar-openai-answer".to_string())
             .spawn(move || run_request(config, request, tx, worker_cancelled))
-            .map_err(|error| AnswerError::Provider(format!("failed to spawn answer worker: {error}")))?;
+            .map_err(|error| {
+                AnswerError::Provider(format!("failed to spawn answer worker: {error}"))
+            })?;
         Ok(Box::new(ChannelAnswerSession {
             rx: Mutex::new(rx),
             cancelled,
@@ -71,10 +76,17 @@ fn run_request(
     tx: mpsc::Sender<AnswerEvent>,
     cancelled: Arc<AtomicBool>,
 ) {
-    let client = match reqwest::blocking::Client::builder().timeout(config.timeout).build() {
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(config.timeout)
+        .build()
+    {
         Ok(client) => client,
         Err(error) => {
-            send_if_active(&tx, &cancelled, AnswerEvent::Error(format!("client setup failed: {error}")));
+            send_if_active(
+                &tx,
+                &cancelled,
+                AnswerEvent::Error(format!("client setup failed: {error}")),
+            );
             return;
         }
     };
@@ -88,7 +100,11 @@ fn run_request(
     {
         Ok(response) => response,
         Err(error) => {
-            send_if_active(&tx, &cancelled, AnswerEvent::Error(format!("Responses API request failed: {error}")));
+            send_if_active(
+                &tx,
+                &cancelled,
+                AnswerEvent::Error(format!("Responses API request failed: {error}")),
+            );
             return;
         }
     };
@@ -120,7 +136,11 @@ fn run_request(
                 }
             },
             Err(error) => {
-                send_if_active(&tx, &cancelled, AnswerEvent::Error(format!("Responses API stream failed: {error}")));
+                send_if_active(
+                    &tx,
+                    &cancelled,
+                    AnswerEvent::Error(format!("Responses API stream failed: {error}")),
+                );
                 return;
             }
         }
@@ -153,7 +173,8 @@ fn parse_sse_line(line: &str) -> Result<Option<AnswerEvent>, String> {
     if data == "[DONE]" {
         return Ok(Some(AnswerEvent::Done));
     }
-    let event: Value = serde_json::from_str(data).map_err(|error| format!("invalid Responses API event: {error}"))?;
+    let event: Value = serde_json::from_str(data)
+        .map_err(|error| format!("invalid Responses API event: {error}"))?;
     let event_type = event.get("type").and_then(Value::as_str).unwrap_or("");
     match event_type {
         "response.output_text.delta" => {
@@ -199,26 +220,34 @@ mod tests {
         assert_eq!(body["model"], "gpt-5-mini");
         assert_eq!(body["stream"], true);
         assert!(body.get("tools").is_none());
-        assert!(body["instructions"].as_str().unwrap().contains("untrusted"));
+        assert!(body["instructions"]
+            .as_str()
+            .unwrap()
+            .contains("untrusted"));
     }
 
     #[test]
     fn parses_streamed_text_and_terminal_events() {
         assert_eq!(
-            parse_sse_line(r#"data: {"type":"response.output_text.delta","delta":"hello"}"#).unwrap(),
+            parse_sse_line(r#"data: {"type":"response.output_text.delta","delta":"hello"}"#)
+                .unwrap(),
             Some(AnswerEvent::Delta("hello".to_string()))
         );
         assert_eq!(
             parse_sse_line(r#"data: {"type":"response.completed"}"#).unwrap(),
             Some(AnswerEvent::Done)
         );
-        assert_eq!(parse_sse_line("data: [DONE]").unwrap(), Some(AnswerEvent::Done));
+        assert_eq!(
+            parse_sse_line("data: [DONE]").unwrap(),
+            Some(AnswerEvent::Done)
+        );
     }
 
     #[test]
     fn provider_failures_are_exposed_as_answer_errors() {
         assert_eq!(
-            parse_sse_line(r#"data: {"type":"error","error":{"message":"rate limited"}}"#).unwrap(),
+            parse_sse_line(r#"data: {"type":"error","error":{"message":"rate limited"}}"#)
+                .unwrap(),
             Some(AnswerEvent::Error("rate limited".to_string()))
         );
     }
