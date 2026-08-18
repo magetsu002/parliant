@@ -306,7 +306,9 @@ fn run_meeting(options: MeetingOptions) -> Result<ExitCode, String> {
     let transcription_session = transcriber.connect().map_err(|error| error.to_string())?;
     let answer_provider = LocalAnswerProvider::from_model(&api_key, options.answer_model)?;
     if !answer_provider.is_enabled() {
-        eprintln!("parliant: local answer generation disabled; meeting context remains available through MCP");
+        eprintln!(
+            "parliant: local answer generation disabled; meeting context remains available through MCP"
+        );
     }
     let engine = RuntimeEngine::new(
         Arc::clone(&meeting_state),
@@ -693,7 +695,7 @@ mod tests {
     #[test]
     fn chatgpt_only_mode_keeps_transcript_and_mcp_state_without_responses_request() {
         let provider = LocalAnswerProvider::from_model("fixture-api-key", None).unwrap();
-        assert!(matches!(provider, LocalAnswerProvider::Disabled));
+        assert!(matches!(&provider, LocalAnswerProvider::Disabled));
 
         let mut state = MeetingState::new(MeetingStoreConfig::default()).unwrap();
         state.start_session();
