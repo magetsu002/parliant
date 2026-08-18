@@ -375,6 +375,29 @@ mod tests {
     }
 
     #[test]
+    fn channel_session_reports_backpressure_when_bounded_audio_queue_is_full() {
+        let (audio_tx, _audio_rx) = tokio::sync::mpsc::channel(1);
+        let (_event_tx, event_rx) = mpsc::channel();
+        let session = ChannelSession {
+            audio_tx,
+            events_rx: std::sync::Mutex::new(event_rx),
+            cancellation: CancellationToken::new(),
+        };
+        let frame = AudioFrame::new(
+            0,
+            MonotonicTimestamp::ZERO,
+            AudioFormat::new(48_000, 2, SampleFormat::F32Le),
+            Vec::new(),
+        );
+
+        assert!(session.push_audio(frame.clone()).is_ok());
+        assert!(matches!(
+            session.push_audio(frame),
+            Err(TranscriptionError::AudioBackpressure)
+        ));
+    }
+
+    #[test]
     fn invalid_final_segment_is_rejected() {
         assert!(TranscriptSegment::new(
             "x",
