@@ -127,7 +127,9 @@ pub fn run_pipewire_capture(
                 SampleFormat::F32Le,
             );
             user_data.format = Some(format);
-            let _ = user_data.events.send(CaptureEvent::FormatNegotiated(format));
+            let _ = user_data
+                .events
+                .send(CaptureEvent::FormatNegotiated(format));
         })
         .process(|stream, user_data| {
             let Some(format) = user_data.format else {
@@ -164,7 +166,9 @@ pub fn run_pipewire_capture(
             );
 
             if let Err(error) = user_data.frames.try_send(frame) {
-                let _ = user_data.events.send(CaptureEvent::Error(error.to_string()));
+                let _ = user_data
+                    .events
+                    .send(CaptureEvent::Error(error.to_string()));
             }
         })
         .register()

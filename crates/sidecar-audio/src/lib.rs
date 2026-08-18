@@ -259,7 +259,9 @@ mod tests {
     #[test]
     fn target_selection_is_explicit_and_non_empty() {
         assert_eq!(
-            CaptureTarget::new("  ", CaptureMode::Source).unwrap_err().to_string(),
+            CaptureTarget::new("  ", CaptureMode::Source)
+                .unwrap_err()
+                .to_string(),
             "capture target must not be empty"
         );
 
@@ -298,7 +300,9 @@ mod tests {
         assert_eq!(outcome.attempted, 3);
         assert!(!outcome.cancelled);
         assert_eq!(actual, expected);
-        assert!(actual.windows(2).all(|pair| pair[0].timestamp < pair[1].timestamp));
+        assert!(actual
+            .windows(2)
+            .all(|pair| pair[0].timestamp < pair[1].timestamp));
     }
 
     #[test]
