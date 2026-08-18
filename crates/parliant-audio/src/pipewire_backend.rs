@@ -19,6 +19,7 @@ struct UserData {
     format: Option<AudioFormat>,
     frames: BoundedFrameSender,
     events: mpsc::Sender<CaptureEvent>,
+    cancellation: CancellationToken,
     session_start: Instant,
     sequence: u64,
     saw_streaming: bool,
@@ -76,6 +77,7 @@ pub fn run_pipewire_capture(
         format: None,
         frames,
         events: events.clone(),
+        cancellation: cancellation.clone(),
         session_start: Instant::now(),
         sequence: 0,
         saw_streaming: false,
@@ -93,10 +95,14 @@ pub fn run_pipewire_capture(
                 let _ = user_data.events.send(CaptureEvent::Streaming);
             }
             pw::stream::StreamState::Error(message) => {
-                let _ = user_data.events.send(CaptureEvent::Error(message));
+                if !user_data.cancellation.is_cancelled() {
+                    let _ = user_data.events.send(CaptureEvent::Error(message));
+                }
                 state_loop.quit();
             }
-            pw::stream::StreamState::Unconnected if user_data.saw_streaming => {
+            pw::stream::StreamState::Unconnected
+                if user_data.saw_streaming && !user_data.cancellation.is_cancelled() =>
+            {
                 let _ = user_data.events.send(CaptureEvent::SourceLost);
                 state_loop.quit();
             }
