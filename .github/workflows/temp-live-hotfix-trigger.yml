@@ -12,30 +12,29 @@ jobs:
   apply:
     if: ${{ github.event.pull_request.head.ref == 'fix/chatgpt-mcp-live-test' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
           ref: fix/chatgpt-mcp-live-test
           fetch-depth: 0
 
-      - name: Apply prepared hotfix transformation
+      - name: Install native development headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpipewire-0.3-dev libspa-0.2-dev libgtk-3-dev libgtk-layer-shell-dev
+
+      - name: Select stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+          rustup default stable
+
+      - name: Apply and validate focused hotfix
         shell: bash
         run: |
           git fetch origin chore/live-hotfix-runner
-          python3 - <<'PY'
-          import subprocess
-          raw = subprocess.check_output([
-              'git', 'show',
-              'origin/chore/live-hotfix-runner:.github/workflows/live-hotfix-runner.yml'
-          ], text=True)
-          marker = "          python3 - <<'PY'\n"
-          start = raw.index(marker) + len(marker)
-          end = raw.index("\n          PY\n", start)
-          script = raw[start:end]
-          script = "\n".join(line[10:] if line.startswith("          ") else line for line in script.splitlines())
-          exec(compile(script, 'prepared-live-hotfix.py', 'exec'), {})
-          PY
+          git show origin/chore/live-hotfix-runner:scripts/apply-live-hotfix.py > /tmp/apply-live-hotfix.py
+          python3 /tmp/apply-live-hotfix.py
 
           rm -f .hotfix-trigger
           cargo fmt --all
