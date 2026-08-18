@@ -72,16 +72,15 @@ While audio flows, require a negotiated format, emitted frames, monotonic/advanc
 
 ## Complete live meeting smoke test
 
-Provide the OpenAI key only through the environment and choose a Responses API model supported by your account:
+Provide the OpenAI key through the environment for realtime transcription. Local answer generation is optional:
 
 ```bash
 export OPENAI_API_KEY='YOUR_KEY_HERE'
 parliant meet \
-  --target '<NODE_NAME_OR_OBJECT_SERIAL>' \
-  --answer-model '<RESPONSES_API_MODEL>'
+  --target '<NODE_NAME_OR_OBJECT_SERIAL>'
 ```
 
-For playback capture add `--sink-monitor`.
+For playback capture add `--sink-monitor`. To also generate private local suggestions, add `--answer-model <RESPONSES_API_MODEL>`; omit it for ChatGPT/MCP-only reasoning.
 
 In a second terminal:
 
@@ -115,7 +114,6 @@ Remote MCP is disabled unless `--remote-mcp` is supplied. Generate a high-entrop
 export PARLIANT_REMOTE_MCP_TOKEN="$(openssl rand -hex 32)"
 parliant meet \
   --target '<NODE_NAME_OR_OBJECT_SERIAL>' \
-  --answer-model '<RESPONSES_API_MODEL>' \
   --remote-mcp
 ```
 

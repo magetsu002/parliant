@@ -60,8 +60,7 @@ Complete V1 meeting pipeline:
 ```bash
 export OPENAI_API_KEY='...'
 cargo run --locked -p parliant-daemon -- meet \
-  --target '<NODE_NAME_OR_OBJECT_SERIAL>' \
-  --answer-model '<RESPONSES_API_MODEL>'
+  --target '<NODE_NAME_OR_OBJECT_SERIAL>'
 ```
 
 For a selected sink's playback monitor, add `--sink-monitor`.
@@ -73,6 +72,8 @@ cargo run --locked -p parliant-overlay
 ```
 
 The remote MCP bridge is opt-in. See [`docs/REMOTE_MCP.md`](docs/REMOTE_MCP.md) before enabling it.
+
+Local answer generation is optional. Omit `--answer-model` when ChatGPT or another MCP client should reason directly over the live meeting context; in that mode Parliant makes no Responses API answer request. Add `--answer-model <RESPONSES_API_MODEL>` only when you want Parliant's private overlay to stream local suggestions.
 
 ## Verification status
 

@@ -65,9 +65,9 @@ enum Command {
         #[arg(long, default_value_t = 64)]
         buffer_frames: usize,
 
-        /// OpenAI Responses API model used for answer suggestions.
+        /// Optional OpenAI Responses API model for local suggestions. Omit for MCP/ChatGPT-only reasoning.
         #[arg(long)]
-        answer_model: String,
+        answer_model: Option<String>,
 
         /// Environment variable containing the OpenAI API key.
         #[arg(long, default_value = "OPENAI_API_KEY")]
@@ -157,7 +157,7 @@ struct MeetingOptions {
     target: String,
     sink_monitor: bool,
     buffer_frames: usize,
-    answer_model: String,
+    answer_model: Option<String>,
     api_key_env: String,
     user_instructions_env: String,
     overlay_socket: Option<PathBuf>,
@@ -250,6 +250,9 @@ fn run_meeting(options: MeetingOptions) -> Result<ExitCode, String> {
         OpenAiRealtimeConfig::new(api_key.clone()).map_err(|error| error.to_string())?,
     );
     let transcription_session = transcriber.connect().map_err(|error| error.to_string())?;
+    if options.answer_model.is_none() {
+        eprintln!("parliant: local answer suggestions disabled; ChatGPT/MCP clients may reason over meeting context directly");
+    }
     let answer_provider = OpenAiResponsesProvider::new(
         OpenAiResponsesConfig::new(api_key, options.answer_model)
             .map_err(|error| error.to_string())?,
