@@ -176,6 +176,7 @@ async fn run_worker(
                     return;
                 }
                 let safe_message = safe_error_text(&error, &config.api_key);
+                eprintln!("parliant: transcription provider error: {safe_message}");
                 let _ = event_tx.send(TranscriptionEvent::Error(safe_message));
                 if attempt >= config.max_reconnects {
                     let _ = event_tx.send(TranscriptionEvent::Health(ProviderHealth::Degraded(
@@ -270,6 +271,7 @@ async fn run_connection(
         )
     })??;
 
+    eprintln!("parliant: transcription session accepted");
     let _ = event_tx.send(TranscriptionEvent::Health(ProviderHealth::Healthy));
 
     let mut latest_audio = MonotonicTimestamp::ZERO;
@@ -332,6 +334,7 @@ async fn run_connection(
                                 }
                                 TranscriptionEvent::Final(segment) => {
                                     last_final_end = segment.end;
+                                    eprintln!("parliant: transcript final: {:?}", segment.text.as_str());
                                     let _ = event_tx.send(TranscriptionEvent::Final(segment));
                                 }
                                 other => {
