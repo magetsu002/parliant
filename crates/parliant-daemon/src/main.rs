@@ -10,13 +10,17 @@ use parliant_ipc::{
     TranscriptionUiState,
 };
 use parliant_mcp::McpService;
-use parliant_orchestrator::{OpenAiResponsesConfig, OpenAiResponsesProvider};
+use parliant_orchestrator::{
+    AnswerError, AnswerEvent, AnswerProvider, AnswerRequest, AnswerSession, OpenAiResponsesConfig,
+    OpenAiResponsesProvider,
+};
 use parliant_remote_mcp::{RemoteBridgeConfig, RemoteMcpBridge};
 use parliant_runtime::{RuntimeEngine, RuntimeStats};
 use parliant_transcribe::{
     OpenAiRealtimeConfig, OpenAiRealtimeProvider, TranscriptionError, TranscriptionProvider,
     TranscriptionSession,
 };
+use std::cell::Cell;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -65,9 +69,9 @@ enum Command {
         #[arg(long, default_value_t = 64)]
         buffer_frames: usize,
 
-        /// OpenAI Responses API model used for answer suggestions.
+        /// Optional OpenAI Responses API model used for local answer suggestions.
         #[arg(long)]
-        answer_model: String,
+        answer_model: Option<String>,
 
         /// Environment variable containing the OpenAI API key.
         #[arg(long, default_value = "OPENAI_API_KEY")]
@@ -101,7 +105,7 @@ enum Command {
         #[arg(long)]
         remote_origin: Vec<String>,
 
-        /// Answer timeout before the current suggestion is cancelled.
+        /// Answer timeout before the current local suggestion is cancelled.
         #[arg(long, default_value_t = 20)]
         answer_timeout_seconds: u64,
     },
@@ -157,7 +161,7 @@ struct MeetingOptions {
     target: String,
     sink_monitor: bool,
     buffer_frames: usize,
-    answer_model: String,
+    answer_model: Option<String>,
     api_key_env: String,
     user_instructions_env: String,
     overlay_socket: Option<PathBuf>,
@@ -167,6 +171,56 @@ struct MeetingOptions {
     remote_mcp_token_env: String,
     remote_origin: Vec<String>,
     answer_timeout: Duration,
+}
+
+enum LocalAnswerProvider {
+    Disabled,
+    OpenAi(OpenAiResponsesProvider),
+}
+
+impl LocalAnswerProvider {
+    fn from_model(api_key: &str, model: Option<String>) -> Result<Self, String> {
+        match model {
+            Some(model) => {
+                let config = OpenAiResponsesConfig::new(api_key.to_string(), model)
+                    .map_err(|error| error.to_string())?;
+                Ok(Self::OpenAi(OpenAiResponsesProvider::new(config)))
+            }
+            None => Ok(Self::Disabled),
+        }
+    }
+
+    fn is_enabled(&self) -> bool {
+        matches!(self, Self::OpenAi(_))
+    }
+}
+
+impl AnswerProvider for LocalAnswerProvider {
+    fn start(&self, request: AnswerRequest) -> Result<Box<dyn AnswerSession>, AnswerError> {
+        match self {
+            Self::Disabled => Ok(Box::new(DisabledAnswerSession::default())),
+            Self::OpenAi(provider) => provider.start(request),
+        }
+    }
+}
+
+#[derive(Default)]
+struct DisabledAnswerSession {
+    completed: Cell<bool>,
+}
+
+impl AnswerSession for DisabledAnswerSession {
+    fn recv_timeout(&self, _timeout: Duration) -> Result<Option<AnswerEvent>, AnswerError> {
+        if self.completed.replace(true) {
+            Ok(None)
+        } else {
+            Ok(Some(AnswerEvent::Done))
+        }
+    }
+
+    fn cancel(&self) {
+        self.completed.set(true);
+    }
 }
 
 fn run_meeting(options: MeetingOptions) -> Result<ExitCode, String> {
@@ -250,10 +304,10 @@ fn run_meeting(options: MeetingOptions) -> Result<ExitCode, String> {
         OpenAiRealtimeConfig::new(api_key.clone()).map_err(|error| error.to_string())?,
     );
     let transcription_session = transcriber.connect().map_err(|error| error.to_string())?;
-    let answer_provider = OpenAiResponsesProvider::new(
-        OpenAiResponsesConfig::new(api_key, options.answer_model)
-            .map_err(|error| error.to_string())?,
-    );
+    let answer_provider = LocalAnswerProvider::from_model(&api_key, options.answer_model)?;
+    if !answer_provider.is_enabled() {
+        eprintln!("parliant: local answer generation disabled; meeting context remains available through MCP");
+    }
     let engine = RuntimeEngine::new(
         Arc::clone(&meeting_state),
         HeuristicSemanticClassifier,
@@ -366,7 +420,7 @@ struct PipelineStats {
 fn run_pipeline(
     frame_rx: mpsc::Receiver<parliant_core::AudioFrame>,
     transcription: Box<dyn TranscriptionSession>,
-    mut engine: RuntimeEngine<OpenAiResponsesProvider, HeuristicSemanticClassifier>,
+    mut engine: RuntimeEngine<LocalAnswerProvider, HeuristicSemanticClassifier>,
     overlay: Option<Arc<IpcServerHandle>>,
     cancellation: CancellationToken,
 ) -> PipelineStats {
@@ -588,5 +642,102 @@ fn print_event(event: &CaptureEvent) {
         CaptureEvent::SourceLost => eprintln!("parliant: selected source lost"),
         CaptureEvent::Error(_message) => eprintln!("parliant: capture backend error"),
         CaptureEvent::Stopped(reason) => eprintln!("parliant: stopped: {reason:?}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use parliant_core::MonotonicTimestamp;
+    use parliant_transcribe::{TranscriptSegment, TranscriptionEvent};
+
+    fn parse_meet(args: &[&str]) -> Command {
+        Cli::try_parse_from(args).unwrap().command
+    }
+
+    #[test]
+    fn meet_accepts_omitted_answer_model_without_selecting_a_default() {
+        let command = parse_meet(&[
+            "parliant",
+            "meet",
+            "--target",
+            "fixture-sink",
+            "--sink-monitor",
+            "--no-overlay",
+        ]);
+        let Command::Meet { answer_model, .. } = command else {
+            panic!("expected meet command");
+        };
+        assert_eq!(answer_model, None);
+    }
+
+    #[test]
+    fn supplying_answer_model_selects_existing_openai_suggestion_path() {
+        let command = parse_meet(&[
+            "parliant",
+            "meet",
+            "--target",
+            "fixture-sink",
+            "--answer-model",
+            "fixture-answer-model",
+        ]);
+        let Command::Meet { answer_model, .. } = command else {
+            panic!("expected meet command");
+        };
+        assert_eq!(answer_model.as_deref(), Some("fixture-answer-model"));
+
+        let provider = LocalAnswerProvider::from_model("fixture-api-key", answer_model).unwrap();
+        assert!(matches!(provider, LocalAnswerProvider::OpenAi(_)));
+    }
+
+    #[test]
+    fn chatgpt_only_mode_keeps_transcript_and_mcp_state_without_responses_request() {
+        let provider = LocalAnswerProvider::from_model("fixture-api-key", None).unwrap();
+        assert!(matches!(provider, LocalAnswerProvider::Disabled));
+
+        let mut state = MeetingState::new(MeetingStoreConfig::default()).unwrap();
+        state.start_session();
+        let shared = Arc::new(RwLock::new(state));
+        let mut runtime = RuntimeEngine::new(
+            Arc::clone(&shared),
+            HeuristicSemanticClassifier,
+            QuestionDetectorConfig {
+                cooldown_segments: 0,
+                ..QuestionDetectorConfig::default()
+            },
+            provider,
+            Duration::from_secs(1),
+            None,
+        );
+
+        let segment = TranscriptSegment::new(
+            "chatgpt-only-1",
+            "When will you deploy the release?",
+            MonotonicTimestamp::from_nanos(10),
+            MonotonicTimestamp::from_nanos(20),
+            None,
+        )
+        .unwrap();
+        let events = runtime
+            .handle_transcription(TranscriptionEvent::Final(segment))
+            .unwrap();
+
+        assert_eq!(shared.read().unwrap().status().retained_segments, 1);
+        assert!(matches!(events.as_slice(), [DaemonEvent::Question { .. }]));
+        assert!(matches!(
+            runtime.poll_answer(Duration::ZERO).unwrap(),
+            Some(DaemonEvent::AnswerDone { .. })
+        ));
+        assert_eq!(runtime.stats().answer_deltas, 0);
+        assert_eq!(runtime.stats().answer_failures, 0);
+
+        let mcp = McpService::new(Arc::clone(&shared));
+        let response = mcp
+            .handle_json(
+                r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"meeting_get_recent","arguments":{"limit":5}}}"#,
+            )
+            .unwrap()
+            .unwrap();
+        assert!(response.contains("When will you deploy the release?"));
     }
 }
