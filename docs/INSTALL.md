@@ -1,6 +1,6 @@
-# Install and verify SIDECAR V1
+# Install and verify PARLIANT V1
 
-SIDECAR V1 targets Arch Linux with PipeWire and a Wayland compositor. The core tests do not require audio hardware, a paid API, or a compositor, but the final runtime smoke tests do.
+PARLIANT V1 targets Arch Linux with PipeWire and a Wayland compositor. The core tests do not require audio hardware, a paid API, or a compositor, but the final runtime smoke tests do.
 
 ## Arch dependencies
 
@@ -15,8 +15,8 @@ rustup default stable
 Clone and build the exact candidate you intend to run:
 
 ```bash
-git clone https://github.com/magetsu002/sidecar.git
-cd sidecar
+git clone https://github.com/magetsu002/parliant.git
+cd parliant
 git fetch --all --prune
 cargo build --workspace --release --locked
 ```
@@ -24,15 +24,15 @@ cargo build --workspace --release --locked
 The binaries are:
 
 ```text
-target/release/sidecar
-target/release/sidecar-overlay
+target/release/parliant
+target/release/parliant-overlay
 ```
 
 For a user-local installation:
 
 ```bash
-install -Dm755 target/release/sidecar "$HOME/.local/bin/sidecar"
-install -Dm755 target/release/sidecar-overlay "$HOME/.local/bin/sidecar-overlay"
+install -Dm755 target/release/parliant "$HOME/.local/bin/parliant"
+install -Dm755 target/release/parliant-overlay "$HOME/.local/bin/parliant-overlay"
 ```
 
 ## Automated release gate
@@ -59,13 +59,13 @@ wpctl inspect <ID>
 Source capture:
 
 ```bash
-sidecar capture --target '<NODE_NAME_OR_OBJECT_SERIAL>'
+parliant capture --target '<NODE_NAME_OR_OBJECT_SERIAL>'
 ```
 
 Selected sink monitor:
 
 ```bash
-sidecar capture --target '<SINK_NODE_NAME_OR_OBJECT_SERIAL>' --sink-monitor
+parliant capture --target '<SINK_NODE_NAME_OR_OBJECT_SERIAL>' --sink-monitor
 ```
 
 While audio flows, require a negotiated format, emitted frames, monotonic/advancing timestamps, and clean Ctrl-C shutdown. Then try an invalid target and disconnect the selected real node while running; both cases must fail explicitly instead of switching to another source.
@@ -76,7 +76,7 @@ Provide the OpenAI key only through the environment and choose a Responses API m
 
 ```bash
 export OPENAI_API_KEY='YOUR_KEY_HERE'
-sidecar meet \
+parliant meet \
   --target '<NODE_NAME_OR_OBJECT_SERIAL>' \
   --answer-model '<RESPONSES_API_MODEL>'
 ```
@@ -86,7 +86,7 @@ For playback capture add `--sink-monitor`.
 In a second terminal:
 
 ```bash
-sidecar-overlay
+parliant-overlay
 ```
 
 Verify all of the following on a real meeting/audio stream:
@@ -99,21 +99,21 @@ Verify all of the following on a real meeting/audio stream:
 6. copy affects only the local clipboard;
 7. stop listening shuts capture/transcription down cooperatively;
 8. provider failure appears as degraded/error state without exposing the API key;
-9. no raw-audio or transcript file is created by SIDECAR.
+9. no raw-audio or transcript file is created by PARLIANT.
 
 The daemon summary is metadata-only: queue/drop counts, finalized/duplicate/question counts, provider failure counts, answer delta counts, and first-answer latency. It intentionally does not print transcript or answer text.
 
 ## Wayland overlay smoke test
 
-Run `sidecar meet` plus `sidecar-overlay` inside the actual target compositor (for example Hyprland) and verify layer-shell placement, top-right anchoring, keyboard interaction, clipboard copy, pin behavior, dismiss/stop controls, daemon restart/reconnect, and overlay restart/reconnect.
+Run `parliant meet` plus `parliant-overlay` inside the actual target compositor (for example Hyprland) and verify layer-shell placement, top-right anchoring, keyboard interaction, clipboard copy, pin behavior, dismiss/stop controls, daemon restart/reconnect, and overlay restart/reconnect.
 
 ## Remote MCP smoke test
 
 Remote MCP is disabled unless `--remote-mcp` is supplied. Generate a high-entropy bearer token locally and keep it out of shell history where practical:
 
 ```bash
-export SIDECAR_REMOTE_MCP_TOKEN="$(openssl rand -hex 32)"
-sidecar meet \
+export PARLIANT_REMOTE_MCP_TOKEN="$(openssl rand -hex 32)"
+parliant meet \
   --target '<NODE_NAME_OR_OBJECT_SERIAL>' \
   --answer-model '<RESPONSES_API_MODEL>' \
   --remote-mcp

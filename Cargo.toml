@@ -1,37 +1,37 @@
 [workspace]
 members = [
-    "crates/sidecar-core",
-    "crates/sidecar-audio",
-    "crates/sidecar-transcribe",
-    "crates/sidecar-context",
-    "crates/sidecar-detect",
-    "crates/sidecar-mcp",
-    "crates/sidecar-orchestrator",
-    "crates/sidecar-ipc",
-    "crates/sidecar-remote-mcp",
-    "crates/sidecar-runtime",
-    "crates/sidecar-daemon",
-    "apps/sidecar-overlay",
+    "crates/parliant-core",
+    "crates/parliant-audio",
+    "crates/parliant-transcribe",
+    "crates/parliant-context",
+    "crates/parliant-detect",
+    "crates/parliant-mcp",
+    "crates/parliant-orchestrator",
+    "crates/parliant-ipc",
+    "crates/parliant-remote-mcp",
+    "crates/parliant-runtime",
+    "crates/parliant-daemon",
+    "apps/parliant-overlay",
 ]
 resolver = "2"
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-repository = "https://github.com/magetsu002/sidecar"
+repository = "https://github.com/magetsu002/parliant"
 publish = false
 
 [workspace.dependencies]
-sidecar-core = { path = "crates/sidecar-core" }
-sidecar-audio = { path = "crates/sidecar-audio" }
-sidecar-transcribe = { path = "crates/sidecar-transcribe" }
-sidecar-context = { path = "crates/sidecar-context" }
-sidecar-detect = { path = "crates/sidecar-detect" }
-sidecar-mcp = { path = "crates/sidecar-mcp" }
-sidecar-orchestrator = { path = "crates/sidecar-orchestrator" }
-sidecar-ipc = { path = "crates/sidecar-ipc" }
-sidecar-remote-mcp = { path = "crates/sidecar-remote-mcp" }
-sidecar-runtime = { path = "crates/sidecar-runtime" }
+parliant-core = { path = "crates/parliant-core" }
+parliant-audio = { path = "crates/parliant-audio" }
+parliant-transcribe = { path = "crates/parliant-transcribe" }
+parliant-context = { path = "crates/parliant-context" }
+parliant-detect = { path = "crates/parliant-detect" }
+parliant-mcp = { path = "crates/parliant-mcp" }
+parliant-orchestrator = { path = "crates/parliant-orchestrator" }
+parliant-ipc = { path = "crates/parliant-ipc" }
+parliant-remote-mcp = { path = "crates/parliant-remote-mcp" }
+parliant-runtime = { path = "crates/parliant-runtime" }
 thiserror = "2.0"
 signal-hook = "0.3.18"
 clap = { version = "4.5", features = ["derive"] }

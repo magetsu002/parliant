@@ -1,6 +1,6 @@
 # Privacy and security model
 
-SIDECAR V1 is local-first and intentionally minimizes persistent and remote meeting data.
+PARLIANT V1 is local-first and intentionally minimizes persistent and remote meeting data.
 
 ## Data that stays memory-only by default
 
@@ -20,7 +20,7 @@ Provider-specific error text is converted to generic user-visible degraded/error
 
 ## Local overlay boundary
 
-The overlay communicates through a versioned Unix-domain socket. SIDECAR uses owner-only socket permissions, validates the peer UID with `SO_PEERCRED`, bounds message size and per-client queues, sends a bounded snapshot after reconnect, and disconnects slow consumers instead of allowing unbounded memory growth.
+The overlay communicates through a versioned Unix-domain socket. PARLIANT uses owner-only socket permissions, validates the peer UID with `SO_PEERCRED`, bounds message size and per-client queues, sends a bounded snapshot after reconnect, and disconnects slow consumers instead of allowing unbounded memory growth.
 
 The overlay receives only current UI state. It does not receive raw audio, credentials, or full transcript history. The only daemon actions accepted from the overlay are dismiss and stop listening. Clipboard copy is performed locally by the overlay and is not sent back to the daemon.
 
@@ -30,7 +30,7 @@ Meeting transcript is treated as untrusted content. Spoken or transcribed prompt
 
 The V1 meeting MCP catalogue is read-only and bounded. The opt-in remote bridge adds a second hard allowlist for the same read-only meeting tools and refuses non-loopback binds. It requires bearer authentication, validates the current MCP routing/version headers, bounds requests/connections, supports revocation, and rejects unapproved browser Origins.
 
-The bridge itself is plain HTTP **only on loopback**. Encryption for cloud access is intentionally delegated to an authenticated TLS tunnel such as OpenAI Secure MCP Tunnel. SIDECAR must not be directly exposed or port-forwarded to a public interface.
+The bridge itself is plain HTTP **only on loopback**. Encryption for cloud access is intentionally delegated to an authenticated TLS tunnel such as OpenAI Secure MCP Tunnel. PARLIANT must not be directly exposed or port-forwarded to a public interface.
 
 ## Secrets
 

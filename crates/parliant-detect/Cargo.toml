@@ -1,0 +1,11 @@
+[package]
+name = "parliant-detect"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+parliant-core.workspace = true
+parliant-context.workspace = true
+serde.workspace = true

@@ -1,6 +1,6 @@
 # Security
 
-SIDECAR is intended to process live conversation and may eventually access private connected context, so security and privacy issues are treated as high priority.
+PARLIANT is intended to process live conversation and may eventually access private connected context, so security and privacy issues are treated as high priority.
 
 Do not publish API keys, tokens, real meeting transcripts, private repository content, customer data, or sensitive proof-of-concept material in public issues or pull requests.
 

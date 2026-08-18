@@ -1,6 +1,6 @@
-# SIDECAR
+# PARLIANT
 
-SIDECAR is a Linux-first local meeting intelligence daemon. V1 captures an explicitly selected PipeWire source or sink monitor, transcribes audio through a provider boundary, keeps bounded finalized meeting text in memory, detects likely questions, generates private answer suggestions, exposes bounded read-only meeting context through MCP, and renders suggestions in a private Wayland overlay.
+PARLIANT is a Linux-first local meeting intelligence daemon. V1 captures an explicitly selected PipeWire source or sink monitor, transcribes audio through a provider boundary, keeps bounded finalized meeting text in memory, detects likely questions, generates private answer suggestions, exposes bounded read-only meeting context through MCP, and renders suggestions in a private Wayland overlay.
 
 ## V1 architecture
 
@@ -8,12 +8,12 @@ The Rust daemon owns capture, provider credentials, canonical meeting state, que
 
 Important boundaries:
 
-- PipeWire target selection is explicit; SIDECAR does not silently fall back to another audio source.
+- PipeWire target selection is explicit; PARLIANT does not silently fall back to another audio source.
 - Only finalized transcript segments become canonical meeting text.
 - Meeting transcript is untrusted data, never authorization or tool instructions.
 - Answer generation is event-driven; it does not continuously invoke the answer model.
 - MCP is read-only and bounded. V1 exposes no shell, process, file-write, or other machine-write tool.
-- The remote bridge is disabled by default and binds only to loopback. A cloud client requires an authenticated encrypted tunnel; SIDECAR does not expose localhost directly to the public internet.
+- The remote bridge is disabled by default and binds only to loopback. A cloud client requires an authenticated encrypted tunnel; PARLIANT does not expose localhost directly to the public internet.
 - The overlay never owns capture, credentials, or canonical state and never speaks answers automatically.
 
 The full architecture contract is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
@@ -48,14 +48,14 @@ wpctl inspect <ID>
 Capture-only diagnostic path:
 
 ```bash
-cargo run --locked -p sidecar-daemon -- capture --target '<NODE_NAME_OR_OBJECT_SERIAL>'
+cargo run --locked -p parliant-daemon -- capture --target '<NODE_NAME_OR_OBJECT_SERIAL>'
 ```
 
 Complete V1 meeting pipeline:
 
 ```bash
 export OPENAI_API_KEY='...'
-cargo run --locked -p sidecar-daemon -- meet \
+cargo run --locked -p parliant-daemon -- meet \
   --target '<NODE_NAME_OR_OBJECT_SERIAL>' \
   --answer-model '<RESPONSES_API_MODEL>'
 ```
@@ -65,7 +65,7 @@ For a selected sink's playback monitor, add `--sink-monitor`.
 In another terminal, launch the private overlay:
 
 ```bash
-cargo run --locked -p sidecar-overlay
+cargo run --locked -p parliant-overlay
 ```
 
 The remote MCP bridge is opt-in. See [`docs/REMOTE_MCP.md`](docs/REMOTE_MCP.md) before enabling it.

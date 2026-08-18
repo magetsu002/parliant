@@ -1,6 +1,6 @@
-# SIDECAR Architecture
+# PARLIANT Architecture
 
-SIDECAR is a Linux-first, local-first meeting intelligence sidecar. Its job is to listen to meeting playback selected by the user, maintain a live transcript, detect when the user is being asked something, retrieve only the context needed to answer, and surface a private suggested response.
+PARLIANT is a Linux-first, local-first meeting intelligence parliant. Its job is to listen to meeting playback selected by the user, maintain a live transcript, detect when the user is being asked something, retrieve only the context needed to answer, and surface a private suggested response.
 
 This document defines the architecture that implementation should follow. It intentionally avoids milestone planning and internal project-management details.
 
@@ -52,7 +52,7 @@ The continuous path and the expensive reasoning path are deliberately separate. 
 
 The preferred v1 runtime has two processes:
 
-### `sidecar`
+### `parliant`
 
 A long-running local daemon responsible for:
 
@@ -66,11 +66,11 @@ A long-running local daemon responsible for:
 - provider credentials;
 - local IPC.
 
-### `sidecar-overlay`
+### `parliant-overlay`
 
 A small UI process responsible only for presenting state and suggestions.
 
-The overlay must not own provider credentials or directly capture audio. Keeping those responsibilities in the daemon gives SIDECAR one auditable trust boundary for sensitive meeting data.
+The overlay must not own provider credentials or directly capture audio. Keeping those responsibilities in the daemon gives PARLIANT one auditable trust boundary for sensitive meeting data.
 
 ## Implementation language
 
@@ -78,7 +78,7 @@ The core daemon should be implemented in **Rust**.
 
 Reasons:
 
-- SIDECAR is fundamentally a long-running Linux systems process rather than a web application;
+- PARLIANT is fundamentally a long-running Linux systems process rather than a web application;
 - audio streaming, bounded queues, cancellation, and process lifetime are first-class concerns;
 - Rust gives us memory safety without a garbage collector in the audio path;
 - a native daemon can be distributed as a small, inspectable binary;
@@ -99,7 +99,7 @@ Requirements:
 - shutdown and source loss must be observable events;
 - raw meeting audio is not written to disk by default.
 
-The domain audio frame must carry its format metadata. Do not make the rest of SIDECAR assume the format required by one transcription vendor.
+The domain audio frame must carry its format metadata. Do not make the rest of PARLIANT assume the format required by one transcription vendor.
 
 A provider adapter may resample/convert at its boundary. For example, OpenAI's current Realtime PCM input uses mono 16-bit PCM at 24 kHz, but that requirement belongs in the OpenAI adapter rather than the core capture contract.
 
@@ -151,7 +151,7 @@ Question detection is a staged gate:
 
 The detector must be replayable against synthetic transcript fixtures so precision/recall can be measured without live meetings or paid APIs.
 
-The user must also have a manual trigger path. Automatic detection is an optimization, not the only way to ask SIDECAR for help.
+The user must also have a manual trigger path. Automatic detection is an optimization, not the only way to ask PARLIANT for help.
 
 ## 5. Answer orchestration
 
@@ -174,7 +174,7 @@ A failure to answer must not stop transcription.
 
 ## 6. MCP boundary
 
-MCP is a context interface, not SIDECAR's trigger loop.
+MCP is a context interface, not PARLIANT's trigger loop.
 
 The local MCP service exposes meeting state as read-only resources/tools. Useful initial capabilities are conceptually:
 
@@ -228,7 +228,7 @@ No automatic microphone control or automatic spoken response belongs in v1.
 
 ## 9. Security and privacy boundaries
 
-SIDECAR handles sensitive live conversation, so the default behavior should minimize retained data and capabilities.
+PARLIANT handles sensitive live conversation, so the default behavior should minimize retained data and capabilities.
 
 Hard invariants:
 
@@ -239,7 +239,7 @@ Hard invariants:
 - context connectors are explicitly configured;
 - write-capable external tools are out of scope for the first version;
 - the UI always makes active listening state visible;
-- SIDECAR does not attempt to bypass OS or meeting-platform privacy controls.
+- PARLIANT does not attempt to bypass OS or meeting-platform privacy controls.
 
 Users are responsible for following applicable meeting, workplace, school, contractual, and legal consent requirements.
 
@@ -284,17 +284,17 @@ The implementation should grow into a structure similar to:
 
 ```text
 crates/
-  sidecar-core/          domain types and state
-  sidecar-audio/         PipeWire capture + audio normalization
-  sidecar-transcribe/    transcription provider interface/adapters
-  sidecar-detect/        question detection
-  sidecar-context/       transcript store + MCP context
-  sidecar-orchestrator/  answer generation and tool policy
-  sidecar-ipc/           daemon/overlay protocol
-  sidecar-daemon/        composition root + CLI
+  parliant-core/          domain types and state
+  parliant-audio/         PipeWire capture + audio normalization
+  parliant-transcribe/    transcription provider interface/adapters
+  parliant-detect/        question detection
+  parliant-context/       transcript store + MCP context
+  parliant-orchestrator/  answer generation and tool policy
+  parliant-ipc/           daemon/overlay protocol
+  parliant-daemon/        composition root + CLI
 
 apps/
-  sidecar-overlay/       private desktop UI
+  parliant-overlay/       private desktop UI
 ```
 
 This is a boundary map, not permission to create empty crates before they are needed. Add components as implementation reaches them.
@@ -306,7 +306,7 @@ Do not solve these before evidence requires them:
 - Windows/macOS support;
 - persistent transcript database design;
 - exact overlay toolkit;
-- cloud-hosted SIDECAR accounts/sync;
+- cloud-hosted PARLIANT accounts/sync;
 - automatic speech output;
 - video/webcam understanding;
 - write-capable MCP/connector actions;
