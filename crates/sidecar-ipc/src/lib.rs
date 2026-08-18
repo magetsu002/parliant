@@ -249,10 +249,16 @@ impl IpcServerHandle {
     pub fn publish(&self, event: DaemonEvent) -> Result<usize, IpcError> {
         let event = sanitize_event(event);
         {
-            let mut state = self.snapshot.lock().map_err(|_| IpcError::StateUnavailable)?;
+            let mut state = self
+                .snapshot
+                .lock()
+                .map_err(|_| IpcError::StateUnavailable)?;
             apply_daemon_event(&mut state, &event);
         }
-        let mut clients = self.clients.lock().map_err(|_| IpcError::StateUnavailable)?;
+        let mut clients = self
+            .clients
+            .lock()
+            .map_err(|_| IpcError::StateUnavailable)?;
         clients.retain(|client| client.tx.try_send(event.clone()).is_ok());
         Ok(clients.len())
     }
@@ -261,7 +267,10 @@ impl IpcServerHandle {
         &self,
         timeout: Duration,
     ) -> Result<Option<OverlayActionEnvelope>, IpcError> {
-        let receiver = self.action_rx.lock().map_err(|_| IpcError::StateUnavailable)?;
+        let receiver = self
+            .action_rx
+            .lock()
+            .map_err(|_| IpcError::StateUnavailable)?;
         match receiver.recv_timeout(timeout) {
             Ok(action) => Ok(Some(action)),
             Err(mpsc::RecvTimeoutError::Timeout) => Ok(None),
@@ -515,8 +524,8 @@ fn read_envelope<T: DeserializeOwned, R: BufRead>(reader: &mut R) -> Result<T, I
     if line.len() > MAX_WIRE_BYTES {
         return Err(IpcError::MessageTooLarge);
     }
-    let envelope: WireEnvelope<T> = serde_json::from_slice(&line)
-        .map_err(|error| IpcError::InvalidJson(error.to_string()))?;
+    let envelope: WireEnvelope<T> =
+        serde_json::from_slice(&line).map_err(|error| IpcError::InvalidJson(error.to_string()))?;
     if envelope.version != IPC_VERSION {
         return Err(IpcError::VersionMismatch {
             expected: IPC_VERSION,
@@ -564,7 +573,10 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        std::env::temp_dir().join(format!("sidecar-ipc-{name}-{}-{unique}.sock", std::process::id()))
+        std::env::temp_dir().join(format!(
+            "sidecar-ipc-{name}-{}-{unique}.sock",
+            std::process::id()
+        ))
     }
 
     #[test]
@@ -661,10 +673,19 @@ mod tests {
             ..OverlaySnapshot::default()
         }
         .sanitize();
-        assert_eq!(state.question.as_ref().unwrap().chars().count(), MAX_QUESTION_CHARS);
+        assert_eq!(
+            state.question.as_ref().unwrap().chars().count(),
+            MAX_QUESTION_CHARS
+        );
         assert_eq!(state.answer.chars().count(), MAX_ANSWER_CHARS);
-        assert_eq!(state.degraded.as_ref().unwrap().chars().count(), MAX_STATUS_CHARS);
-        assert_eq!(state.error.as_ref().unwrap().chars().count(), MAX_STATUS_CHARS);
+        assert_eq!(
+            state.degraded.as_ref().unwrap().chars().count(),
+            MAX_STATUS_CHARS
+        );
+        assert_eq!(
+            state.error.as_ref().unwrap().chars().count(),
+            MAX_STATUS_CHARS
+        );
 
         apply_daemon_event(
             &mut state,
@@ -680,7 +701,10 @@ mod tests {
     fn non_socket_path_is_never_clobbered() {
         let path = socket_path("safe-path");
         fs::write(&path, "do not replace").unwrap();
-        assert!(matches!(IpcServer::bind(&path), Err(IpcError::UnsafeSocketPath)));
+        assert!(matches!(
+            IpcServer::bind(&path),
+            Err(IpcError::UnsafeSocketPath)
+        ));
         assert_eq!(fs::read_to_string(&path).unwrap(), "do not replace");
         fs::remove_file(path).unwrap();
     }

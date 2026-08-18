@@ -12,7 +12,10 @@ use std::thread;
 use std::time::Duration;
 
 #[derive(Debug, Parser)]
-#[command(name = "sidecar-overlay", about = "Private local SIDECAR meeting overlay")]
+#[command(
+    name = "sidecar-overlay",
+    about = "Private local SIDECAR meeting overlay"
+)]
 struct Cli {
     /// Override the daemon Unix-domain socket path.
     #[arg(long)]
@@ -142,7 +145,11 @@ fn build_ui(application: &Application, socket: PathBuf) {
         } else {
             "disconnected · retrying"
         };
-        let listening = if current.listening { "listening" } else { "stopped" };
+        let listening = if current.listening {
+            "listening"
+        } else {
+            "stopped"
+        };
         let transcription = match current.transcription {
             TranscriptionUiState::Idle => "idle",
             TranscriptionUiState::Connecting => "transcription connecting",
