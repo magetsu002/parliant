@@ -650,7 +650,8 @@ fn read_http_request(stream: &mut TcpStream, max_body: usize) -> Result<HttpRequ
     }
 
     let header_text = std::str::from_utf8(&buffer[..header_end - 4])
-        .map_err(|_| HttpFailure::bad_request("HTTP headers must be UTF-8/ASCII"))?;
+        .map_err(|_| HttpFailure::bad_request("HTTP headers must be UTF-8/ASCII"))?
+        .to_owned();
     let mut lines = header_text.split("\r\n");
     let request_line = lines
         .next()
