@@ -24,17 +24,16 @@ impl SemanticClassifier for HeuristicSemanticClassifier {
     fn classify(&self, text: &str) -> SemanticAssessment {
         let normalized = text.trim().to_lowercase();
         let is_question = candidate_check(&normalized);
-        let addressed_to_user_confidence = if contains_word(&normalized, "you")
-            || contains_word(&normalized, "your")
-        {
-            95
-        } else if contains_word(&normalized, "we") || contains_word(&normalized, "our") {
-            82
-        } else if is_question {
-            72
-        } else {
-            0
-        };
+        let addressed_to_user_confidence =
+            if contains_word(&normalized, "you") || contains_word(&normalized, "your") {
+                95
+            } else if contains_word(&normalized, "we") || contains_word(&normalized, "our") {
+                82
+            } else if is_question {
+                72
+            } else {
+                0
+            };
         let incomplete_suffixes = [
             "can you",
             "could you",
@@ -233,9 +232,30 @@ pub fn candidate_check(text: &str) -> bool {
         return true;
     }
     const PREFIXES: &[&str] = &[
-        "what ", "why ", "when ", "where ", "who ", "which ", "how ", "can ", "could ",
-        "would ", "will ", "do ", "does ", "did ", "is ", "are ", "was ", "were ",
-        "should ", "may ", "tell me ", "walk me through ", "explain ", "give me ",
+        "what ",
+        "why ",
+        "when ",
+        "where ",
+        "who ",
+        "which ",
+        "how ",
+        "can ",
+        "could ",
+        "would ",
+        "will ",
+        "do ",
+        "does ",
+        "did ",
+        "is ",
+        "are ",
+        "was ",
+        "were ",
+        "should ",
+        "may ",
+        "tell me ",
+        "walk me through ",
+        "explain ",
+        "give me ",
     ];
     PREFIXES.iter().any(|prefix| normalized.starts_with(prefix))
 }
@@ -311,7 +331,9 @@ mod tests {
     #[test]
     fn incomplete_question_is_joined_with_the_next_finalized_segment() {
         let mut detector = detector();
-        assert!(detector.process_finalized(&segment(1, "Could you")).is_none());
+        assert!(detector
+            .process_finalized(&segment(1, "Could you"))
+            .is_none());
         let event = detector
             .process_finalized(&segment(2, "explain why staging failed?"))
             .unwrap();
